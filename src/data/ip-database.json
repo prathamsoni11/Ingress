@@ -1,0 +1,137 @@
+{
+  "125.20.250.6": {
+    "ip": "125.20.250.6",
+    "asn": "AS9498",
+    "as_name": "BHARTI Airtel Ltd.",
+    "as_domain": "airtel.in",
+    "type": "isp",
+    "country": "India",
+    "city": "New Delhi"
+  },
+  "204.79.197.200": {
+    "ip": "204.79.197.200",
+    "asn": "AS8075",
+    "as_name": "Microsoft Corporation",
+    "as_domain": "microsoft.com",
+    "type": "business",
+    "country": "United States",
+    "city": "Redmond"
+  },
+  "157.240.2.14": {
+    "ip": "157.240.2.14",
+    "asn": "AS32934",
+    "as_name": "Meta Platforms, Inc.",
+    "as_domain": "facebook.com",
+    "type": "hosting",
+    "country": "United States",
+    "city": "Menlo Park"
+  },
+  "128.143.0.0": {
+    "ip": "128.143.0.0",
+    "asn": "AS233",
+    "as_name": "University of Virginia",
+    "as_domain": "virginia.edu",
+    "type": "education",
+    "country": "United States",
+    "city": "Charlottesville"
+  },
+  "8.8.8.8": {
+    "ip": "8.8.8.8",
+    "asn": "AS15169",
+    "as_name": "Google LLC",
+    "as_domain": "google.com",
+    "type": "business",
+    "country": "United States",
+    "city": "Mountain View"
+  },
+  "23.210.14.0": {
+    "ip": "23.210.14.0",
+    "asn": "AS14618",
+    "as_name": "US GOVERNMENT-HHS",
+    "as_domain": "hhs.gov",
+    "type": "government",
+    "country": "United States",
+    "city": "Washington"
+  },
+  "199.67.175.0": {
+    "ip": "199.67.175.0",
+    "asn": "AS10787",
+    "as_name": "Bank of America",
+    "as_domain": "bankofamerica.com",
+    "type": "banking",
+    "country": "United States",
+    "city": "Charlotte"
+  },
+  "104.28.21.13": {
+    "ip": "104.28.21.13",
+    "asn": "AS13335",
+    "as_name": "Cloudflare, Inc.",
+    "as_domain": "cloudflare.com",
+    "type": "isp",
+    "country": "United States",
+    "city": "San Francisco"
+  },
+  "50.231.136.2": {
+    "ip": "50.231.136.2",
+    "asn": "AS7018",
+    "as_name": "AT&T Services, Inc.",
+    "as_domain": "att.com",
+    "type": "business",
+    "country": "United States",
+    "city": "Dallas"
+  },
+  "5.161.56.240": {
+    "ip": "5.161.56.240",
+    "asn": "AS24940",
+    "as_name": "Hetzner Online GmbH",
+    "as_domain": "hetzner.com",
+    "type": "hosting",
+    "country": "Germany",
+    "city": "Nuremberg"
+  },
+  "192.0.2.100": {
+    "ip": "192.0.2.100",
+    "asn": "AS233",
+    "as_name": "Acme Corporation",
+    "as_domain": "acme.com",
+    "type": "business",
+    "country": "Canada",
+    "city": "Toronto"
+  },
+  "198.51.100.200": {
+    "ip": "198.51.100.200",
+    "asn": "AS10787",
+    "as_name": "Global Solutions LLC",
+    "as_domain": "globalsolutions.com",
+    "type": "business",
+    "country": "United Kingdom",
+    "city": "London"
+  },
+  "203.0.113.50": {
+    "ip": "203.0.113.50",
+    "asn": "AS4766",
+    "as_name": "Korea Telecom",
+    "as_domain": "kt.com",
+    "type": "isp",
+    "country": "South Korea",
+    "city": "Seoul"
+  },
+  "172.217.14.110": {
+    "ip": "172.217.14.110",
+    "asn": "AS15169",
+    "as_name": "Alphabet Inc.",
+    "as_domain": "abc.xyz",
+    "type": "business",
+    "country": "United States",
+    "city": "Mountain View"
+  },
+  "140.82.112.4": {
+    "ip": "140.82.112.4",
+    "asn": "AS36459",
+    "as_name": "GitHub, Inc.",
+    "as_domain": "github.com",
+    "type": "business",
+    "country": "United States",
+    "city": "San Francisco"
+  }
+}

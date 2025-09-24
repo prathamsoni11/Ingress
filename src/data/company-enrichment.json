@@ -1,0 +1,349 @@
+{
+  "microsoft.com": {
+    "company_name": "Microsoft Corporation",
+    "domain": "microsoft.com",
+    "logo_url": "https://logo.clearbit.com/microsoft.com",
+    "employees": "221,000",
+    "revenue": "$211.9B",
+    "industry": "Software & Technology",
+    "headquarters": "Redmond, WA",
+    "hq_country": "United States",
+    "founded": 1975,
+    "website": "https://www.microsoft.com",
+    "description": "Develops, manufactures, licenses, supports and sells computer software, consumer electronics and personal computers.",
+    "stock_symbol": "MSFT",
+    "contacts": [
+      {
+        "name": "Satya Nadella",
+        "role": "CEO",
+        "department": "Executive",
+        "email": "satya@microsoft.com"
+      },
+      {
+        "name": "Amy Hood",
+        "role": "CFO",
+        "department": "Finance",
+        "email": "amy.hood@microsoft.com"
+      },
+      {
+        "name": "Brad Smith",
+        "role": "Vice Chairman & President",
+        "department": "Legal & Corporate Affairs",
+        "email": "brad.smith@microsoft.com"
+      }
+    ],
+    "technologies": ["Azure", "Office 365", "Windows", "SQL Server", ".NET"],
+    "social_media": {
+      "linkedin": "https://linkedin.com/company/microsoft",
+      "twitter": "https://twitter.com/microsoft"
+    }
+  },
+  "google.com": {
+    "company_name": "Google LLC",
+    "domain": "google.com",
+    "logo_url": "https://logo.clearbit.com/google.com",
+    "employees": "182,000",
+    "revenue": "$282.8B",
+    "industry": "Internet & Technology",
+    "headquarters": "Mountain View, CA",
+    "hq_country": "United States",
+    "founded": 1998,
+    "website": "https://www.google.com",
+    "description": "Multinational technology company specializing in Internet-related services and products.",
+    "stock_symbol": "GOOGL",
+    "contacts": [
+      {
+        "name": "Sundar Pichai",
+        "role": "CEO",
+        "department": "Executive",
+        "email": "sundar@google.com"
+      },
+      {
+        "name": "Ruth Porat",
+        "role": "CFO",
+        "department": "Finance",
+        "email": "ruth@google.com"
+      },
+      {
+        "name": "Thomas Kurian",
+        "role": "CEO, Google Cloud",
+        "department": "Cloud",
+        "email": "thomas@google.com"
+      }
+    ],
+    "technologies": ["Google Cloud", "Android", "Chrome", "YouTube", "Gmail"],
+    "social_media": {
+      "linkedin": "https://linkedin.com/company/google",
+      "twitter": "https://twitter.com/google"
+    }
+  },
+  "virginia.edu": {
+    "company_name": "University of Virginia",
+    "domain": "virginia.edu",
+    "logo_url": "https://logo.clearbit.com/virginia.edu",
+    "employees": "13,600",
+    "revenue": "$1.9B",
+    "industry": "Higher Education",
+    "headquarters": "Charlottesville, VA",
+    "hq_country": "United States",
+    "founded": 1819,
+    "website": "https://www.virginia.edu",
+    "description": "Public research university founded by Thomas Jefferson, known for academic excellence and historic campus.",
+    "stock_symbol": "N/A",
+    "contacts": [
+      {
+        "name": "James E. Ryan",
+        "role": "President",
+        "department": "Executive",
+        "email": "president@virginia.edu"
+      },
+      {
+        "name": "Jennifer Wagner Davis",
+        "role": "Executive Vice President & COO",
+        "department": "Operations",
+        "email": "jwd@virginia.edu"
+      }
+    ],
+    "technologies": ["Canvas LMS", "Collab", "SIS", "Research Computing"],
+    "social_media": {
+      "linkedin": "https://linkedin.com/school/university-of-virginia",
+      "twitter": "https://twitter.com/UVA"
+    }
+  },
+  "hhs.gov": {
+    "company_name": "US Department of Health and Human Services",
+    "domain": "hhs.gov",
+    "logo_url": "https://logo.clearbit.com/hhs.gov",
+    "employees": "80,000",
+    "revenue": "N/A",
+    "industry": "Government Administration",
+    "headquarters": "Washington, DC",
+    "hq_country": "United States",
+    "founded": 1953,
+    "website": "https://www.hhs.gov",
+    "description": "Principal agency for protecting the health of all Americans and providing essential human services.",
+    "stock_symbol": "N/A",
+    "contacts": [
+      {
+        "name": "Xavier Becerra",
+        "role": "Secretary",
+        "department": "Executive",
+        "email": "secretary@hhs.gov"
+      },
+      {
+        "name": "Andrea Palm",
+        "role": "Deputy Secretary",
+        "department": "Executive",
+        "email": "deputy.secretary@hhs.gov"
+      }
+    ],
+    "technologies": ["HealthCare.gov", "CDC Systems", "NIH Databases"],
+    "social_media": {
+      "linkedin": "https://linkedin.com/company/us-department-of-health-and-human-services",
+      "twitter": "https://twitter.com/HHSGov"
+    }
+  },
+  "bankofamerica.com": {
+    "company_name": "Bank of America Corporation",
+    "domain": "bankofamerica.com",
+    "logo_url": "https://logo.clearbit.com/bankofamerica.com",
+    "employees": "213,000",
+    "revenue": "$105B",
+    "industry": "Financial Services & Banking",
+    "headquarters": "Charlotte, NC",
+    "hq_country": "United States",
+    "founded": 1904,
+    "website": "https://www.bankofamerica.com",
+    "description": "Multinational investment bank and financial services holding company.",
+    "stock_symbol": "BAC",
+    "contacts": [
+      {
+        "name": "Brian Moynihan",
+        "role": "Chairman & CEO",
+        "department": "Executive",
+        "email": "brian.moynihan@bofa.com"
+      },
+      {
+        "name": "Alastair Borthwick",
+        "role": "CFO",
+        "department": "Finance",
+        "email": "alastair.borthwick@bofa.com"
+      }
+    ],
+    "technologies": ["Mobile Banking", "Zelle", "Erica AI", "Merrill Edge"],
+    "social_media": {
+      "linkedin": "https://linkedin.com/company/bank-of-america",
+      "twitter": "https://twitter.com/BankofAmerica"
+    }
+  },
+  "att.com": {
+    "company_name": "AT&T Inc.",
+    "domain": "att.com",
+    "logo_url": "https://logo.clearbit.com/att.com",
+    "employees": "160,000",
+    "revenue": "$120.7B",
+    "industry": "Telecommunications",
+    "headquarters": "Dallas, TX",
+    "hq_country": "United States",
+    "founded": 1983,
+    "website": "https://www.att.com",
+    "description": "Multinational conglomerate holding company providing telecommunications, media, and technology services.",
+    "stock_symbol": "T",
+    "contacts": [
+      {
+        "name": "John Stankey",
+        "role": "CEO",
+        "department": "Executive",
+        "email": "john.stankey@att.com"
+      },
+      {
+        "name": "Pascal Desroches",
+        "role": "CFO",
+        "department": "Finance",
+        "email": "pascal.desroches@att.com"
+      }
+    ],
+    "technologies": ["5G Network", "HBO Max", "DirectTV", "AT&T Business"],
+    "social_media": {
+      "linkedin": "https://linkedin.com/company/att",
+      "twitter": "https://twitter.com/ATT"
+    }
+  },
+  "acme.com": {
+    "company_name": "Acme Corporation",
+    "domain": "acme.com",
+    "logo_url": "https://logo.clearbit.com/acme.com",
+    "employees": "150",
+    "revenue": "$25M",
+    "industry": "Manufacturing & Industrial Equipment",
+    "headquarters": "Toronto, ON",
+    "hq_country": "Canada",
+    "founded": 1985,
+    "website": "https://www.acme.com",
+    "description": "Leading manufacturer of industrial equipment and automation solutions for various industries.",
+    "stock_symbol": "N/A",
+    "contacts": [
+      {
+        "name": "Wile E. Coyote",
+        "role": "Founder & CEO",
+        "department": "Executive",
+        "email": "wile@acme.com"
+      },
+      {
+        "name": "Road Runner",
+        "role": "VP of Product Development",
+        "department": "Product",
+        "email": "roadrunner@acme.com"
+      }
+    ],
+    "technologies": ["Industrial IoT", "Automation Systems", "CAD/CAM"],
+    "social_media": {
+      "linkedin": "https://linkedin.com/company/acme-corp",
+      "twitter": "https://twitter.com/AcmeCorp"
+    }
+  },
+  "globalsolutions.com": {
+    "company_name": "Global Solutions LLC",
+    "domain": "globalsolutions.com",
+    "logo_url": "https://logo.clearbit.com/globalsolutions.com",
+    "employees": "750",
+    "revenue": "$85M",
+    "industry": "Management Consulting",
+    "headquarters": "London, UK",
+    "hq_country": "United Kingdom",
+    "founded": 2001,
+    "website": "https://www.globalsolutions.com",
+    "description": "International consulting firm specializing in digital transformation and business strategy.",
+    "stock_symbol": "N/A",
+    "contacts": [
+      {
+        "name": "Jane Doe",
+        "role": "Managing Partner",
+        "department": "Executive",
+        "email": "jane.doe@globalsolutions.com"
+      },
+      {
+        "name": "John Smith",
+        "role": "Director of Operations",
+        "department": "Operations",
+        "email": "john.smith@globalsolutions.com"
+      }
+    ],
+    "technologies": ["Salesforce", "Microsoft Dynamics", "Tableau", "AWS"],
+    "social_media": {
+      "linkedin": "https://linkedin.com/company/global-solutions-llc",
+      "twitter": "https://twitter.com/GlobalSolLLC"
+    }
+  },
+  "abc.xyz": {
+    "company_name": "Alphabet Inc.",
+    "domain": "abc.xyz",
+    "logo_url": "https://logo.clearbit.com/abc.xyz",
+    "employees": "190,000",
+    "revenue": "$307.4B",
+    "industry": "Technology Conglomerate",
+    "headquarters": "Mountain View, CA",
+    "hq_country": "United States",
+    "founded": 2015,
+    "website": "https://abc.xyz",
+    "description": "Multinational conglomerate and parent company of Google and several former Google subsidiaries.",
+    "stock_symbol": "GOOGL",
+    "contacts": [
+      {
+        "name": "Sundar Pichai",
+        "role": "CEO",
+        "department": "Executive",
+        "email": "sundar@abc.xyz"
+      },
+      {
+        "name": "Ruth Porat",
+        "role": "CFO",
+        "department": "Finance",
+        "email": "ruth@abc.xyz"
+      }
+    ],
+    "technologies": [
+      "AI/ML",
+      "Quantum Computing",
+      "Autonomous Vehicles",
+      "Cloud Computing"
+    ],
+    "social_media": {
+      "linkedin": "https://linkedin.com/company/alphabet-inc",
+      "twitter": "https://twitter.com/alphabet"
+    }
+  },
+  "github.com": {
+    "company_name": "GitHub, Inc.",
+    "domain": "github.com",
+    "logo_url": "https://logo.clearbit.com/github.com",
+    "employees": "3,000",
+    "revenue": "$1B+",
+    "industry": "Software Development Platform",
+    "headquarters": "San Francisco, CA",
+    "hq_country": "United States",
+    "founded": 2008,
+    "website": "https://github.com",
+    "description": "Internet hosting service for software development and version control using Git.",
+    "stock_symbol": "N/A (Microsoft subsidiary)",
+    "contacts": [
+      {
+        "name": "Thomas Dohmke",
+        "role": "CEO",
+        "department": "Executive",
+        "email": "thomas@github.com"
+      },
+      {
+        "name": "Mike Taylor",
+        "role": "COO",
+        "department": "Operations",
+        "email": "mike@github.com"
+      }
+    ],
+    "technologies": ["Git", "GitHub Actions", "Codespaces", "Copilot AI"],
+    "social_media": {
+      "linkedin": "https://linkedin.com/company/github",
+      "twitter": "https://twitter.com/github"
+    }
+  }
+}
