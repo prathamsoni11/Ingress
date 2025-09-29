@@ -1031,4 +1031,144 @@ router.get(
   }
 );
 
+/**
+ * @swagger
+ * /api/simple-test:
+ *   post:
+ *     summary: Simple testing endpoint for manual testing
+ *     description: Basic endpoint to collect visitor data for testing (no authentication required)
+ *     tags: [Testing]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ipAddress
+ *               - sessionId
+ *               - pageUrl
+ *               - timestamp
+ *             properties:
+ *               ipAddress:
+ *                 type: string
+ *                 example: "203.0.113.1"
+ *                 description: Visitor's IP address
+ *               sessionId:
+ *                 type: string
+ *                 example: "session-abc123xyz"
+ *                 description: Unique session identifier
+ *               pageUrl:
+ *                 type: string
+ *                 example: "https://example.com/landing-page"
+ *                 description: Current page URL
+ *               timestamp:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2024-01-01T12:00:00.000Z"
+ *                 description: Visit timestamp
+ *     responses:
+ *       200:
+ *         description: Data stored successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Test data stored successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       description: Firebase document ID
+ *                     ipAddress:
+ *                       type: string
+ *                     sessionId:
+ *                       type: string
+ *                     pageUrl:
+ *                       type: string
+ *                     timestamp:
+ *                       type: string
+ *       400:
+ *         description: Missing required fields
+ *       500:
+ *         description: Server error
+ */
+router.post("/simple-test", async (req, res) => {
+  try {
+    const { ipAddress, sessionId, pageUrl, timestamp } = req.body;
+
+    // Validate required fields
+    const validation = validateRequiredFields(req.body, [
+      "ipAddress",
+      "sessionId",
+      "pageUrl",
+      "timestamp",
+    ]);
+    if (!validation.isValid) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: validation.message,
+      });
+    }
+
+    Logger.info("SimpleTest", "New simple test data", {
+      ipAddress,
+      sessionId,
+      pageUrl,
+    });
+
+    // Simple data object - just what you requested
+    const testData = {
+      ipAddress,
+      sessionId,
+      pageUrl,
+      timestamp,
+      // Add some metadata
+      collectedAt: new Date().toISOString(),
+      userAgent: req.headers["user-agent"] || "unknown",
+      source: "simple-test-endpoint",
+    };
+
+    // Store in Firebase
+    const docRef = await db.collection("simple_test_data").add(testData);
+
+    Logger.info("SimpleTest", "Test data stored successfully", {
+      docId: docRef.id,
+      ipAddress,
+      sessionId,
+    });
+
+    // Return success response
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: "Test data stored successfully",
+      data: {
+        id: docRef.id,
+        ipAddress,
+        sessionId,
+        pageUrl,
+        timestamp,
+      },
+    });
+  } catch (error) {
+    Logger.error("SimpleTest", "Error storing test data", error);
+
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to store test data",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+    });
+  }
+});
+
 module.exports = router;
