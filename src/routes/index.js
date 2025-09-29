@@ -1095,6 +1095,13 @@ router.get(
  *                       type: string
  *                     timestamp:
  *                       type: string
+ *                     status:
+ *                       type: string
+ *                       enum: [new_record, already_exists]
+ *                       description: Whether this is a new record or IP already existed
+ *                     firstSeen:
+ *                       type: string
+ *                       description: When this IP was first seen (only for already_exists)
  *       400:
  *         description: Missing required fields
  *       500:
@@ -1124,7 +1131,39 @@ router.post("/simple-test", async (req, res) => {
       pageUrl,
     });
 
-    // Simple data object - just what you requested
+    // Check if IP address already exists in the database
+    const existingIpQuery = await db
+      .collection("simple_test_data")
+      .where("ipAddress", "==", ipAddress)
+      .limit(1)
+      .get();
+
+    if (!existingIpQuery.empty) {
+      const existingDoc = existingIpQuery.docs[0];
+      const existingData = existingDoc.data();
+
+      Logger.info("SimpleTest", "IP address already exists, skipping insert", {
+        ipAddress,
+        existingDocId: existingDoc.id,
+        existingTimestamp: existingData.timestamp,
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: "IP address already exists in database",
+        data: {
+          id: existingDoc.id,
+          ipAddress: existingData.ipAddress,
+          sessionId: existingData.sessionId,
+          pageUrl: existingData.pageUrl,
+          timestamp: existingData.timestamp,
+          status: "already_exists",
+          firstSeen: existingData.collectedAt,
+        },
+      });
+    }
+
+    // IP doesn't exist, proceed with storing new data
     const testData = {
       ipAddress,
       sessionId,
@@ -1139,7 +1178,7 @@ router.post("/simple-test", async (req, res) => {
     // Store in Firebase
     const docRef = await db.collection("simple_test_data").add(testData);
 
-    Logger.info("SimpleTest", "Test data stored successfully", {
+    Logger.info("SimpleTest", "New test data stored successfully", {
       docId: docRef.id,
       ipAddress,
       sessionId,
@@ -1155,6 +1194,7 @@ router.post("/simple-test", async (req, res) => {
         sessionId,
         pageUrl,
         timestamp,
+        status: "new_record",
       },
     });
   } catch (error) {
