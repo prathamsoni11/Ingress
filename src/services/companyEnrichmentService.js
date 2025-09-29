@@ -1,5 +1,6 @@
 const mockEnrichmentData = require("../data/company-enrichment.json");
 const cacheService = require("./cacheService");
+const Logger = require("../utils/logger");
 
 /**
  * Company Enrichment Service
@@ -12,8 +13,9 @@ class CompanyEnrichmentService {
    * @returns {Promise<Object|null>} A promise that resolves with the enriched data or null if not found.
    */
   static async enrichCompanyData(domain) {
-    console.log(
-      `[Service] Simulating API call to ZoomInfo for domain: ${domain}...`
+    Logger.info(
+      "CompanyEnrichment",
+      `Simulating API call to ZoomInfo for domain: ${domain}`
     );
 
     // Check cache first
@@ -21,7 +23,10 @@ class CompanyEnrichmentService {
     const cachedData = cacheService.get(cacheKey);
 
     if (cachedData !== undefined) {
-      console.log(`[Cache] Using cached company data for domain: ${domain}`);
+      Logger.info(
+        "CompanyEnrichment",
+        `Using cached company data for domain: ${domain}`
+      );
       return cachedData;
     }
 
@@ -31,13 +36,19 @@ class CompanyEnrichmentService {
     const enrichedData = mockEnrichmentData[domain] || null;
 
     if (!enrichedData) {
-      console.log(`[Service] No enriched data found for domain: ${domain}.`);
+      Logger.info(
+        "CompanyEnrichment",
+        `No enriched data found for domain: ${domain}`
+      );
       // Cache null results for shorter time (1 hour)
       cacheService.set(cacheKey, null, 60 * 60);
       return null;
     }
 
-    console.log(`[Service] Successfully enriched data for domain: ${domain}`);
+    Logger.info(
+      "CompanyEnrichment",
+      `Successfully enriched data for domain: ${domain}`
+    );
 
     // Cache successful enrichments for longer time (24 hours)
     cacheService.set(cacheKey, enrichedData, 24 * 60 * 60);
@@ -68,8 +79,9 @@ class CompanyEnrichmentService {
    * @returns {Object} Fallback enrichment data
    */
   static generateFallbackData(domain, companyName) {
-    console.log(
-      `[Service] Generating fallback enrichment data for ${domain}...`
+    Logger.info(
+      "CompanyEnrichment",
+      `Generating fallback enrichment data for ${domain}`
     );
 
     return {

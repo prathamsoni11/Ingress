@@ -1,6 +1,7 @@
 const mockIpDatabase = require("../data/ip-database.json");
 const CompanyEnrichmentService = require("./companyEnrichmentService");
 const cacheService = require("./cacheService");
+const Logger = require("../utils/logger");
 
 /**
  * IP Enrichment Service
@@ -13,21 +14,27 @@ class IPEnrichmentService {
    * @returns {Object} Enrichment result
    */
   static async enrichIP(ipAddress) {
-    console.log(`[Lookup] Performing initial lookup for IP: ${ipAddress}...`);
+    Logger.info(
+      "IPEnrichment",
+      `Performing initial lookup for IP: ${ipAddress}`
+    );
 
     // Check cache first
     const cacheKey = `ip_enrichment_${ipAddress}`;
     const cachedResult = cacheService.get(cacheKey);
 
     if (cachedResult) {
-      console.log(`[Cache] Using cached result for IP: ${ipAddress}`);
+      Logger.info("IPEnrichment", `Using cached result for IP: ${ipAddress}`);
       return cachedResult;
     }
 
     const ipinfoResult = mockIpDatabase[ipAddress] || null;
 
     if (!ipinfoResult) {
-      console.log("[Lookup] No match found. Filtering this traffic out.");
+      Logger.info(
+        "IPEnrichment",
+        "No match found. Filtering this traffic out."
+      );
       const result = {
         status: "filtered",
         reason: "No data found for this IP.",
@@ -40,8 +47,9 @@ class IPEnrichmentService {
 
     // Filter ISP and hosting providers
     if (ipinfoResult.type === "isp" || ipinfoResult.type === "hosting") {
-      console.log(
-        `[Filter] IP belongs to an ISP or Hosting service: ${ipinfoResult.as_name}. Filtering out.`
+      Logger.info(
+        "IPEnrichment",
+        `IP belongs to ISP/Hosting service: ${ipinfoResult.as_name}. Filtering out.`
       );
       const result = {
         status: "filtered",
@@ -53,11 +61,13 @@ class IPEnrichmentService {
       return result;
     }
 
-    console.log(
-      `[Enrichment] IP successfully matched to a business: ${ipinfoResult.as_name}. Domain: ${ipinfoResult.as_domain}`
+    Logger.info(
+      "IPEnrichment",
+      `IP matched to business: ${ipinfoResult.as_name}. Domain: ${ipinfoResult.as_domain}`
     );
-    console.log(
-      `[Enrichment] Now beginning the "Enrichment Waterfall" with ZoomInfo using the domain: ${ipinfoResult.as_domain}...`
+    Logger.info(
+      "IPEnrichment",
+      `Beginning enrichment waterfall for domain: ${ipinfoResult.as_domain}`
     );
 
     // Get enriched company data using the new service

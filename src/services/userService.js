@@ -1,9 +1,13 @@
 const bcrypt = require("bcryptjs");
 const { db } = require("../config/firebase");
+const Logger = require("../utils/logger");
+const { validateEmail, validatePassword } = require("../utils/validators");
+const { ERROR_MESSAGES, USER_ROLES } = require("../utils/constants");
+const { getEnv } = require("../utils/env");
 
 /**
  * User Service
- * Handles user authentication and management
+ * Handles user authentication and management with enhanced security and validation
  */
 class UserService {
   /**
@@ -15,7 +19,22 @@ class UserService {
       const adminPassword = process.env.ADMIN_PASSWORD;
 
       if (!adminEmail || !adminPassword) {
-        console.log("[UserService] Admin credentials not configured");
+        Logger.warn(
+          "UserService",
+          "Admin credentials not configured in environment variables"
+        );
+        return;
+      }
+
+      // Validate admin email format
+      const emailValidation = validateEmail(
+        adminEmail,
+        getEnv("ALLOWED_EMAIL_DOMAIN")
+      );
+      if (!emailValidation.isValid) {
+        Logger.error("UserService", "Invalid admin email format", {
+          email: adminEmail,
+        });
         return;
       }
 
@@ -26,24 +45,43 @@ class UserService {
         .get();
 
       if (adminQuery.empty) {
+        // Validate password strength
+        const passwordValidation = validatePassword(adminPassword);
+        if (!passwordValidation.isValid) {
+          Logger.error(
+            "UserService",
+            "Admin password does not meet requirements",
+            {
+              message: passwordValidation.message,
+            }
+          );
+          return;
+        }
+
         // Create admin user
-        const hashedPassword = await bcrypt.hash(adminPassword, 10);
+        const hashedPassword = await bcrypt.hash(adminPassword, 12); // Increased salt rounds
 
         await db.collection("users").add({
           email: adminEmail,
           password: hashedPassword,
-          role: "admin",
+          role: USER_ROLES.ADMIN,
           isActive: true,
           createdAt: new Date().toISOString(),
           createdBy: "system",
+          lastLogin: null,
+          loginAttempts: 0,
         });
 
-        console.log(`[UserService] Admin user created: ${adminEmail}`);
+        Logger.info("UserService", "Admin user created successfully", {
+          email: adminEmail,
+        });
       } else {
-        console.log(`[UserService] Admin user already exists: ${adminEmail}`);
+        Logger.info("UserService", "Admin user already exists", {
+          email: adminEmail,
+        });
       }
     } catch (error) {
-      console.error("[UserService] Error initializing admin:", error.message);
+      Logger.error("UserService", "Error initializing admin user", error);
     }
   }
 
@@ -52,13 +90,29 @@ class UserService {
    */
   static async authenticateUser(email, password) {
     try {
-      // Validate email domain
-      const allowedDomain =
-        process.env.ALLOWED_EMAIL_DOMAIN || "consultadd.com";
-      if (!email.endsWith(`@${allowedDomain}`)) {
+      // Input validation
+      if (!email || !password) {
+        Logger.warn(
+          "UserService",
+          "Authentication attempt with missing credentials"
+        );
         return {
           success: false,
-          message: `Email must be from ${allowedDomain} domain`,
+          message: ERROR_MESSAGES.MISSING_REQUIRED_FIELDS,
+        };
+      }
+
+      // Validate email format and domain
+      const allowedDomain = getEnv("ALLOWED_EMAIL_DOMAIN");
+      const emailValidation = validateEmail(email, allowedDomain);
+
+      if (!emailValidation.isValid) {
+        Logger.warn("UserService", "Authentication failed - invalid email", {
+          email,
+        });
+        return {
+          success: false,
+          message: emailValidation.message,
         };
       }
 
@@ -69,9 +123,12 @@ class UserService {
         .get();
 
       if (userQuery.empty) {
+        Logger.warn("UserService", "Authentication failed - user not found", {
+          email,
+        });
         return {
           success: false,
-          message: "Invalid email or password",
+          message: ERROR_MESSAGES.INVALID_CREDENTIALS,
         };
       }
 
@@ -80,9 +137,31 @@ class UserService {
 
       // Check if user is active
       if (!userData.isActive) {
+        Logger.warn(
+          "UserService",
+          "Authentication failed - account deactivated",
+          {
+            email,
+            userId: userDoc.id,
+          }
+        );
         return {
           success: false,
-          message: "Account is deactivated. Please contact admin.",
+          message: ERROR_MESSAGES.ACCOUNT_DEACTIVATED,
+        };
+      }
+
+      // Check for account lockout (basic brute force protection)
+      const maxLoginAttempts = 5;
+      if (userData.loginAttempts >= maxLoginAttempts) {
+        Logger.warn("UserService", "Authentication failed - account locked", {
+          email,
+          attempts: userData.loginAttempts,
+        });
+        return {
+          success: false,
+          message:
+            "Account temporarily locked due to multiple failed login attempts. Please contact admin.",
         };
       }
 
@@ -90,11 +169,37 @@ class UserService {
       const isPasswordValid = await bcrypt.compare(password, userData.password);
 
       if (!isPasswordValid) {
+        // Increment login attempts
+        await db
+          .collection("users")
+          .doc(userDoc.id)
+          .update({
+            loginAttempts: (userData.loginAttempts || 0) + 1,
+            lastFailedLogin: new Date().toISOString(),
+          });
+
+        Logger.warn("UserService", "Authentication failed - invalid password", {
+          email,
+          attempts: (userData.loginAttempts || 0) + 1,
+        });
+
         return {
           success: false,
-          message: "Invalid email or password",
+          message: ERROR_MESSAGES.INVALID_CREDENTIALS,
         };
       }
+
+      // Reset login attempts and update last login
+      await db.collection("users").doc(userDoc.id).update({
+        loginAttempts: 0,
+        lastLogin: new Date().toISOString(),
+      });
+
+      Logger.info("UserService", "User authenticated successfully", {
+        email,
+        userId: userDoc.id,
+        role: userData.role,
+      });
 
       // Return user info (without password)
       return {
@@ -105,13 +210,14 @@ class UserService {
           role: userData.role,
           isActive: userData.isActive,
           createdAt: userData.createdAt,
+          lastLogin: new Date().toISOString(),
         },
       };
     } catch (error) {
-      console.error("[UserService] Authentication error:", error);
+      Logger.error("UserService", "Authentication error", error);
       return {
         success: false,
-        message: "Authentication failed",
+        message: ERROR_MESSAGES.INTERNAL_ERROR,
       };
     }
   }
@@ -122,8 +228,7 @@ class UserService {
   static async createUser(email, password, createdByUserId) {
     try {
       // Validate email domain
-      const allowedDomain =
-        process.env.ALLOWED_EMAIL_DOMAIN || "consultadd.com";
+      const allowedDomain = getEnv("ALLOWED_EMAIL_DOMAIN");
       if (!email.endsWith(`@${allowedDomain}`)) {
         return {
           success: false,
@@ -163,7 +268,7 @@ class UserService {
         userId: userRef.id,
       };
     } catch (error) {
-      console.error("[UserService] Create user error:", error);
+      Logger.error("UserService", "Create user error", error);
       return {
         success: false,
         message: "Failed to create user",
@@ -191,7 +296,7 @@ class UserService {
         users: users,
       };
     } catch (error) {
-      console.error("[UserService] Get users error:", error);
+      Logger.error("UserService", "Get users error", error);
       return {
         success: false,
         message: "Failed to retrieve users",
@@ -214,7 +319,7 @@ class UserService {
         message: `User ${isActive ? "activated" : "deactivated"} successfully`,
       };
     } catch (error) {
-      console.error("[UserService] Update user status error:", error);
+      Logger.error("UserService", "Update user status error", error);
       return {
         success: false,
         message: "Failed to update user status",
@@ -234,7 +339,7 @@ class UserService {
         message: "User deleted successfully",
       };
     } catch (error) {
-      console.error("[UserService] Delete user error:", error);
+      Logger.error("UserService", "Delete user error", error);
       return {
         success: false,
         message: "Failed to delete user",

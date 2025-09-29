@@ -5,26 +5,46 @@ const {
   authenticateJWT,
   generateToken,
   requireAdmin,
+  requireRole,
 } = require("../middleware/auth");
 const UserService = require("../services/userService");
+const IPEnrichmentService = require("../services/ipEnrichmentService");
+const CompanyEnrichmentService = require("../services/companyEnrichmentService");
+const cacheService = require("../services/cacheService");
+const Logger = require("../utils/logger");
+const {
+  validateRequiredFields,
+  validateIPAddress,
+} = require("../utils/validators");
+const {
+  HTTP_STATUS,
+  ERROR_MESSAGES,
+  SUCCESS_MESSAGES,
+  JWT,
+  USER_ROLES,
+} = require("../utils/constants");
+
+/**
+ * ROLE-BASED ACCESS CONTROL SYSTEM
+ *
+ * Authentication Levels:
+ * 1. No Auth Required: /health, /, /api-docs, POST /api/login
+ * 2. User + Admin Access: /api/track, /api/dashboard-summary, /api/company/*, /api/enrichment-domains
+ * 3. Admin Only Access: /api/visitors, /api/users/*, /api/cache/*
+ *
+ * JWT Token contains: { userId, email, role, iat }
+ * Roles: "user" | "admin"
+ */
 
 /**
  * @swagger
- * components:
- *   securitySchemes:
- *     JWTAuth:
- *       type: http
- *       scheme: bearer
- *       bearerFormat: JWT
- *       description: JWT token authentication (get token from /api/login)
- *
  * /api/health:
  *   get:
  *     summary: Health check endpoint
  *     description: Returns the health status of the server
  *     tags: [Health]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: Server is healthy
@@ -52,7 +72,7 @@ const UserService = require("../services/userService");
  * /api/login:
  *   post:
  *     summary: Login and get JWT token
- *     description: Authenticate with API key and receive a JWT token
+ *     description: Authenticate with email/password and receive a JWT token for BearerAuth
  *     tags: [Authentication]
  *     requestBody:
  *       required: true
@@ -61,16 +81,19 @@ const UserService = require("../services/userService");
  *           schema:
  *             type: object
  *             required:
- *               - apiKey
+ *               - email
+ *               - password
  *             properties:
- *               apiKey:
+ *               email:
  *                 type: string
- *                 example: "ingress_api_key_2024_secure_token_xyz123"
- *                 description: Your API key
- *               clientName:
+ *                 format: email
+ *                 example: "admin@consultadd.com"
+ *                 description: User email (must be @consultadd.com domain)
+ *               password:
  *                 type: string
- *                 example: "My Website"
- *                 description: Optional client identifier
+ *                 format: password
+ *                 example: "Admin@123456"
+ *                 description: User password
  *     responses:
  *       200:
  *         description: Login successful
@@ -88,62 +111,71 @@ const UserService = require("../services/userService");
  *                 expiresIn:
  *                   type: string
  *                   example: "30d"
+ *       400:
+ *         description: Bad request - missing email or password
  *       401:
- *         description: Invalid API key
+ *         description: Invalid credentials or account deactivated
  */
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({
-      error: "Bad Request",
-      message: "Email and password are required",
-    });
-  }
+    // Validate required fields
+    const validation = validateRequiredFields(req.body, ["email", "password"]);
+    if (!validation.isValid) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        error: "Bad Request",
+        message: validation.message,
+      });
+    }
 
-  const authResult = await UserService.authenticateUser(email, password);
+    Logger.info("Auth", "Login attempt", { email });
 
-  if (!authResult.success) {
-    return res.status(401).json({
-      error: "Unauthorized",
-      message: authResult.message,
-    });
-  }
+    const authResult = await UserService.authenticateUser(email, password);
 
-  // Generate JWT token
-  const tokenPayload = {
-    userId: authResult.user.id,
-    email: authResult.user.email,
-    role: authResult.user.role,
-    iat: Math.floor(Date.now() / 1000),
-  };
+    if (!authResult.success) {
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        error: "Unauthorized",
+        message: authResult.message,
+      });
+    }
 
-  const token = generateToken(tokenPayload, "30d");
-
-  res.json({
-    success: true,
-    token: token,
-    user: {
-      id: authResult.user.id,
+    // Generate JWT token
+    const tokenPayload = {
+      userId: authResult.user.id,
       email: authResult.user.email,
       role: authResult.user.role,
-    },
-    expiresIn: "30d",
-    message: "Login successful",
-  });
+      iat: Math.floor(Date.now() / 1000),
+    };
+
+    const token = generateToken(tokenPayload, JWT.DEFAULT_EXPIRES_IN);
+
+    Logger.info("Auth", "Login successful", {
+      userId: authResult.user.id,
+      email: authResult.user.email,
+    });
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      token: token,
+      user: {
+        id: authResult.user.id,
+        email: authResult.user.email,
+        role: authResult.user.role,
+      },
+      expiresIn: JWT.DEFAULT_EXPIRES_IN,
+      message: SUCCESS_MESSAGES.LOGIN_SUCCESS,
+    });
+  } catch (error) {
+    Logger.error("Auth", "Login error", error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      error: "Internal Server Error",
+      message: ERROR_MESSAGES.INTERNAL_ERROR,
+    });
+  }
 });
 
-router.get("/health", authenticateJWT, (_req, res) => {
-  res.status(200).json({
-    status: "healthy",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
-});
-
-const IPEnrichmentService = require("../services/ipEnrichmentService");
-const CompanyEnrichmentService = require("../services/companyEnrichmentService");
-const cacheService = require("../services/cacheService");
+// Removed redundant /api/health - use /health instead
 
 /**
  * @swagger
@@ -153,7 +185,7 @@ const cacheService = require("../services/cacheService");
  *     description: Receives visitor data and performs IP lookup and enrichment
  *     tags: [Tracking]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -221,57 +253,93 @@ const cacheService = require("../services/cacheService");
  *       403:
  *         description: Forbidden - Invalid token
  */
-router.post("/track", authenticateJWT, async (req, res) => {
-  const { ipAddress, sessionId, pageUrl, timestamp } = req.body;
+router.post(
+  "/track",
+  authenticateJWT,
+  requireRole([USER_ROLES.USER, USER_ROLES.ADMIN]),
+  async (req, res) => {
+    try {
+      const { ipAddress, sessionId, pageUrl, timestamp } = req.body;
 
-  if (!ipAddress) {
-    return res.status(400).json({ error: "IP address is required." });
+      // Validate required fields
+      const validation = validateRequiredFields(req.body, ["ipAddress"]);
+      if (!validation.isValid) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          error: "Bad Request",
+          message: validation.message,
+        });
+      }
+
+      // Validate IP address format
+      const ipValidation = validateIPAddress(ipAddress);
+      if (!ipValidation.isValid) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          error: "Bad Request",
+          message: ipValidation.message,
+        });
+      }
+
+      Logger.info("Tracking", "New website visit received", {
+        ipAddress,
+        sessionId,
+        pageUrl,
+        timestamp,
+        userId: req.user.userId,
+      });
+
+      // Perform IP enrichment
+      const enrichmentResult = await IPEnrichmentService.enrichIP(ipAddress);
+
+      // Return early if IP was filtered
+      if (enrichmentResult.status === "filtered") {
+        Logger.info("Tracking", "IP filtered", {
+          ipAddress,
+          reason: enrichmentResult.reason,
+        });
+        return res.status(HTTP_STATUS.OK).json(enrichmentResult);
+      }
+
+      // Create enriched data object, filtering out undefined values
+      const enrichedData = {
+        ...enrichmentResult.data,
+        created_at: new Date().toISOString(),
+        tracked_by: req.user.userId,
+      };
+
+      // Only add fields if they have values
+      if (sessionId !== undefined && sessionId !== null) {
+        enrichedData.sessionId = sessionId;
+      }
+      if (pageUrl !== undefined && pageUrl !== null) {
+        enrichedData.pageUrl = pageUrl;
+      }
+      if (timestamp !== undefined && timestamp !== null) {
+        enrichedData.timestamp = timestamp;
+      }
+
+      // Save to database
+      const docRef = await db.collection("visitor_data").add(enrichedData);
+
+      Logger.info("Tracking", "Visitor data saved successfully", {
+        docId: docRef.id,
+        ipAddress,
+        company: enrichedData.zoominfo_data?.company_name || "Unknown",
+      });
+
+      res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        data: enrichedData,
+        id: docRef.id,
+      });
+    } catch (error) {
+      Logger.error("Tracking", "Error processing visitor data", error);
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        status: "error",
+        message: "Failed to save data to database.",
+      });
+    }
   }
-
-  console.log("\n--- New Website Visit Received ---");
-  console.log("IP Address:", ipAddress);
-  console.log("Session ID:", sessionId);
-  console.log("Page URL:", pageUrl);
-  console.log("Timestamp:", timestamp);
-  console.log("-----------------------------------");
-
-  // Perform IP enrichment
-  const enrichmentResult = await IPEnrichmentService.enrichIP(ipAddress);
-
-  // Return early if IP was filtered
-  if (enrichmentResult.status === "filtered") {
-    return res.json(enrichmentResult);
-  }
-
-  // Create enriched data object, filtering out undefined values
-  const enrichedData = {
-    ...enrichmentResult.data,
-    created_at: new Date().toISOString(),
-  };
-
-  // Only add fields if they have values
-  if (sessionId !== undefined && sessionId !== null) {
-    enrichedData.sessionId = sessionId;
-  }
-  if (pageUrl !== undefined && pageUrl !== null) {
-    enrichedData.pageUrl = pageUrl;
-  }
-  if (timestamp !== undefined && timestamp !== null) {
-    enrichedData.timestamp = timestamp;
-  }
-
-  try {
-    await db.collection("visitor_data").add(enrichedData);
-    console.log("Successfully saved visitor data to Firestore.");
-    return res.json({ status: "success", data: enrichedData });
-  } catch (error) {
-    console.error("Error saving data to Firestore:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Failed to save data to database.",
-    });
-  }
-});
+);
 
 /**
  * @swagger
@@ -281,7 +349,7 @@ router.post("/track", authenticateJWT, async (req, res) => {
  *     description: Retrieves all stored visitor data from the database
  *     tags: [Visitors]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: List of visitors retrieved successfully
@@ -336,22 +404,27 @@ router.post("/track", authenticateJWT, async (req, res) => {
  *       500:
  *         description: Error retrieving visitor data
  */
-router.get("/visitors", authenticateJWT, requireAdmin, async (req, res) => {
-  try {
-    const snapshot = await db.collection("visitor_data").get();
-    const visitors = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-    res.json(visitors);
-  } catch (error) {
-    console.error("Error retrieving visitors from Firestore:", error);
-    res.status(500).json({
-      status: "error",
-      message: "Failed to retrieve visitor data.",
-    });
+router.get(
+  "/visitors",
+  authenticateJWT,
+  requireRole([USER_ROLES.ADMIN]),
+  async (req, res) => {
+    try {
+      const snapshot = await db.collection("visitor_data").get();
+      const visitors = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      res.json(visitors);
+    } catch (error) {
+      Logger.error("Routes", "Error retrieving visitors from Firestore", error);
+      res.status(500).json({
+        status: "error",
+        message: "Failed to retrieve visitor data.",
+      });
+    }
   }
-});
+);
 
 /**
  * @swagger
@@ -361,7 +434,7 @@ router.get("/visitors", authenticateJWT, requireAdmin, async (req, res) => {
  *     description: Create a new user with @consultadd.com email
  *     tags: [User Management]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -386,31 +459,40 @@ router.get("/visitors", authenticateJWT, requireAdmin, async (req, res) => {
  *       403:
  *         description: Admin access required
  */
-router.post("/users", authenticateJWT, requireAdmin, async (req, res) => {
-  const { email, password } = req.body;
+router.post(
+  "/users",
+  authenticateJWT,
+  requireRole([USER_ROLES.ADMIN]),
+  async (req, res) => {
+    const { email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({
-      error: "Bad Request",
-      message: "Email and password are required",
-    });
-  }
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Bad Request",
+        message: "Email and password are required",
+      });
+    }
 
-  const result = await UserService.createUser(email, password, req.user.userId);
+    const result = await UserService.createUser(
+      email,
+      password,
+      req.user.userId
+    );
 
-  if (!result.success) {
-    return res.status(400).json({
-      error: "Bad Request",
+    if (!result.success) {
+      return res.status(400).json({
+        error: "Bad Request",
+        message: result.message,
+      });
+    }
+
+    res.status(201).json({
+      success: true,
       message: result.message,
+      userId: result.userId,
     });
   }
-
-  res.status(201).json({
-    success: true,
-    message: result.message,
-    userId: result.userId,
-  });
-});
+);
 
 /**
  * @swagger
@@ -420,7 +502,7 @@ router.post("/users", authenticateJWT, requireAdmin, async (req, res) => {
  *     description: Retrieve list of all users
  *     tags: [User Management]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: Users retrieved successfully
@@ -449,21 +531,26 @@ router.post("/users", authenticateJWT, requireAdmin, async (req, res) => {
  *       403:
  *         description: Admin access required
  */
-router.get("/users", authenticateJWT, requireAdmin, async (req, res) => {
-  const result = await UserService.getAllUsers();
+router.get(
+  "/users",
+  authenticateJWT,
+  requireRole([USER_ROLES.ADMIN]),
+  async (req, res) => {
+    const result = await UserService.getAllUsers();
 
-  if (!result.success) {
-    return res.status(500).json({
-      error: "Internal Server Error",
-      message: result.message,
+    if (!result.success) {
+      return res.status(500).json({
+        error: "Internal Server Error",
+        message: result.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      users: result.users,
     });
   }
-
-  res.json({
-    success: true,
-    users: result.users,
-  });
-});
+);
 
 /**
  * @swagger
@@ -473,7 +560,7 @@ router.get("/users", authenticateJWT, requireAdmin, async (req, res) => {
  *     description: Activate or deactivate a user
  *     tags: [User Management]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: userId
@@ -537,7 +624,7 @@ router.patch(
  *     description: Permanently delete a user
  *     tags: [User Management]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: userId
@@ -581,7 +668,7 @@ router.delete(
  *     description: Retrieve analytics data including company visit counts and daily visits
  *     tags: [Analytics]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: Dashboard summary retrieved successfully
@@ -634,7 +721,7 @@ router.delete(
  *     description: List all domains that have enrichment data available for testing
  *     tags: [Testing]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: Available domains retrieved successfully
@@ -654,16 +741,21 @@ router.delete(
  *                   type: number
  *                   example: 6
  */
-router.get("/enrichment-domains", authenticateJWT, (req, res) => {
-  const domains = IPEnrichmentService.getAvailableEnrichmentDomains();
+router.get(
+  "/enrichment-domains",
+  authenticateJWT,
+  requireRole([USER_ROLES.USER, USER_ROLES.ADMIN]),
+  (req, res) => {
+    const domains = IPEnrichmentService.getAvailableEnrichmentDomains();
 
-  res.json({
-    success: true,
-    domains: domains,
-    count: domains.length,
-    message: "Available enrichment domains retrieved successfully",
-  });
-});
+    res.json({
+      success: true,
+      domains: domains,
+      count: domains.length,
+      message: "Available enrichment domains retrieved successfully",
+    });
+  }
+);
 
 /**
  * @swagger
@@ -673,7 +765,7 @@ router.get("/enrichment-domains", authenticateJWT, (req, res) => {
  *     description: Retrieve detailed company information including contacts, technologies, and financial data
  *     tags: [Company Intelligence]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: domain
@@ -769,7 +861,7 @@ router.get("/enrichment-domains", authenticateJWT, (req, res) => {
  *     description: Retrieve cache performance metrics and statistics
  *     tags: [Cache Management]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: Cache statistics retrieved successfully
@@ -804,7 +896,7 @@ router.get("/cache/stats", authenticateJWT, requireAdmin, (req, res) => {
       message: "Cache statistics retrieved successfully",
     });
   } catch (error) {
-    console.error("Error getting cache stats:", error);
+    Logger.error("Routes", "Error getting cache stats", error);
     res.status(500).json({
       success: false,
       message: "Failed to retrieve cache statistics",
@@ -820,7 +912,7 @@ router.get("/cache/stats", authenticateJWT, requireAdmin, (req, res) => {
  *     description: Remove all cached data (Admin only)
  *     tags: [Cache Management]
  *     security:
- *       - JWTAuth: []
+ *       - BearerAuth: []
  *     responses:
  *       200:
  *         description: Cache cleared successfully
@@ -836,7 +928,7 @@ router.delete("/cache/clear", authenticateJWT, requireAdmin, (req, res) => {
       message: "Cache cleared successfully",
     });
   } catch (error) {
-    console.error("Error clearing cache:", error);
+    Logger.error("Routes", "Error clearing cache", error);
     res.status(500).json({
       success: false,
       message: "Failed to clear cache",
@@ -844,85 +936,99 @@ router.delete("/cache/clear", authenticateJWT, requireAdmin, (req, res) => {
   }
 });
 
-router.get("/company/:domain", authenticateJWT, async (req, res) => {
-  const domain = req.params.domain;
+router.get(
+  "/company/:domain",
+  authenticateJWT,
+  requireRole([USER_ROLES.USER, USER_ROLES.ADMIN]),
+  async (req, res) => {
+    const domain = req.params.domain;
 
-  try {
-    // Get company profile from enrichment service
-    const companyProfile = await CompanyEnrichmentService.enrichCompanyData(
-      domain
-    );
+    try {
+      // Get company profile from enrichment service
+      const companyProfile = await CompanyEnrichmentService.enrichCompanyData(
+        domain
+      );
 
-    if (!companyProfile) {
-      return res.status(404).json({
+      if (!companyProfile) {
+        return res.status(404).json({
+          success: false,
+          message: "Company not found",
+          available_domains: CompanyEnrichmentService.getAvailableDomains(),
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: companyProfile,
+        message: "Company profile retrieved successfully",
+      });
+    } catch (error) {
+      Logger.error("Routes", "Error fetching company profile", error);
+      res.status(500).json({
         success: false,
-        message: "Company not found",
-        available_domains: CompanyEnrichmentService.getAvailableDomains(),
+        message: "Internal server error",
       });
     }
-
-    res.status(200).json({
-      success: true,
-      data: companyProfile,
-      message: "Company profile retrieved successfully",
-    });
-  } catch (error) {
-    console.error("Error fetching company profile:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
   }
-});
+);
 
-router.get("/dashboard-summary", authenticateJWT, async (req, res) => {
-  try {
-    const snapshot = await db.collection("visitor_data").get();
-    const visitors = snapshot.docs.map((doc) => doc.data());
+router.get(
+  "/dashboard-summary",
+  authenticateJWT,
+  requireRole([USER_ROLES.USER, USER_ROLES.ADMIN]),
+  async (req, res) => {
+    try {
+      const snapshot = await db.collection("visitor_data").get();
+      const visitors = snapshot.docs.map((doc) => doc.data());
 
-    // Count visits by company
-    const companyCounts = visitors.reduce((acc, visitor) => {
-      const company = visitor.zoominfo_data
-        ? visitor.zoominfo_data.company_name
-        : "Unknown";
-      acc[company] = (acc[company] || 0) + 1;
-      return acc;
-    }, {});
+      // Count visits by company
+      const companyCounts = visitors.reduce((acc, visitor) => {
+        const company = visitor.zoominfo_data
+          ? visitor.zoominfo_data.company_name
+          : "Unknown";
+        acc[company] = (acc[company] || 0) + 1;
+        return acc;
+      }, {});
 
-    // Count visits by day
-    const dailyVisits = visitors.reduce((acc, visitor) => {
-      // Use created_at if timestamp is not available
-      const dateString = visitor.timestamp || visitor.created_at;
-      if (dateString) {
-        const date = new Date(dateString).toISOString().split("T")[0];
-        acc[date] = (acc[date] || 0) + 1;
-      }
-      return acc;
-    }, {});
+      // Count visits by day
+      const dailyVisits = visitors.reduce((acc, visitor) => {
+        // Use created_at if timestamp is not available
+        const dateString = visitor.timestamp || visitor.created_at;
+        if (dateString) {
+          const date = new Date(dateString).toISOString().split("T")[0];
+          acc[date] = (acc[date] || 0) + 1;
+        }
+        return acc;
+      }, {});
 
-    // Calculate additional metrics
-    const totalVisits = visitors.length;
-    const uniqueCompanies = Object.keys(companyCounts).length;
-    const businessVisits = visitors.filter((v) => v.zoominfo_data).length;
-    const filteredVisits = totalVisits - businessVisits;
+      // Calculate additional metrics
+      const totalVisits = visitors.length;
+      const uniqueCompanies = Object.keys(companyCounts).length;
+      const businessVisits = visitors.filter((v) => v.zoominfo_data).length;
+      const filteredVisits = totalVisits - businessVisits;
 
-    res.json({
-      summary: {
-        totalVisits,
-        uniqueCompanies,
-        businessVisits,
-        filteredVisits,
-      },
-      companyCounts,
-      dailyVisits,
-    });
-  } catch (error) {
-    console.error("Error retrieving dashboard summary from Firestore:", error);
-    res.status(500).json({
-      status: "error",
-      message: "Failed to retrieve dashboard summary data.",
-    });
+      res.json({
+        summary: {
+          totalVisits,
+          uniqueCompanies,
+          businessVisits,
+          filteredVisits,
+        },
+        companyCounts,
+        dailyVisits,
+      });
+    } catch (error) {
+      Logger.error(
+        "Routes",
+        "Error retrieving dashboard summary from Firestore",
+        error
+      );
+      res.status(500).json({
+        status: "error",
+        message: "Failed to retrieve dashboard summary data.",
+      });
+    }
   }
-});
+);
 
 module.exports = router;
