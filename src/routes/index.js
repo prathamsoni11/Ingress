@@ -1058,15 +1058,24 @@ router.get(
  *                 type: string
  *                 example: "session-abc123xyz"
  *                 description: Unique session identifier
- *               pageUrl:
- *                 type: string
- *                 example: "https://example.com/landing-page"
- *                 description: Current page URL
+               pageUrl:
+ *                 oneOf:
+ *                   - type: string
+ *                     example: "https://example.com/landing-page"
+ *                   - type: array
+ *                     items:
+ *                       type: string
+ *                     example: ["https://example.com/home", "https://example.com/about"]
+ *                 description: Current page URL (string) or page history (array)
  *               timestamp:
  *                 type: string
  *                 format: date-time
  *                 example: "2024-01-01T12:00:00.000Z"
- *                 description: Visit timestamp
+ *                 description: Visit timestamp (optional, auto-generated if not provided)
+ *               timezone:
+ *                 type: string
+ *                 example: "45 seconds"
+ *                 description: Session duration in human-readable format (optional)
  *     responses:
  *       200:
  *         description: Data stored successfully
@@ -1109,15 +1118,20 @@ router.get(
  */
 router.post("/simple-test", async (req, res) => {
   try {
-    const { ipAddress, sessionId, pageUrl, timestamp } = req.body;
+    const { ipAddress, sessionId, pageUrl, timestamp, timezone } = req.body;
 
-    // Validate required fields
-    const validation = validateRequiredFields(req.body, [
-      "ipAddress",
-      "sessionId",
-      "pageUrl",
-      "timestamp",
-    ]);
+    // Handle both old format (pageUrl as string) and new format (pageUrl as array)
+    const pageUrlString = Array.isArray(pageUrl)
+      ? pageUrl[pageUrl.length - 1] || "unknown"
+      : pageUrl;
+    const pageHistory = Array.isArray(pageUrl) ? pageUrl : [pageUrl];
+
+    // Handle session duration (timezone field contains duration)
+    const sessionDuration = timezone || "unknown";
+
+    // Validate required fields (flexible validation)
+    const requiredFields = ["ipAddress", "sessionId"];
+    const validation = validateRequiredFields(req.body, requiredFields);
     if (!validation.isValid) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
@@ -1156,6 +1170,8 @@ router.post("/simple-test", async (req, res) => {
           ipAddress: existingData.ipAddress,
           sessionId: existingData.sessionId,
           pageUrl: existingData.pageUrl,
+          pageHistory: existingData.pageHistory || [existingData.pageUrl],
+          sessionDuration: existingData.sessionDuration || "unknown",
           timestamp: existingData.timestamp,
           status: "already_exists",
           firstSeen: existingData.collectedAt,
@@ -1167,8 +1183,10 @@ router.post("/simple-test", async (req, res) => {
     const testData = {
       ipAddress,
       sessionId,
-      pageUrl,
-      timestamp,
+      pageUrl: pageUrlString, // Store the last/current page URL
+      pageHistory: pageHistory, // Store full page history
+      sessionDuration: sessionDuration, // Store session duration
+      timestamp: timestamp || new Date().toISOString(),
       // Add some metadata
       collectedAt: new Date().toISOString(),
       userAgent: req.headers["user-agent"] || "unknown",
@@ -1192,8 +1210,10 @@ router.post("/simple-test", async (req, res) => {
         id: docRef.id,
         ipAddress,
         sessionId,
-        pageUrl,
-        timestamp,
+        pageUrl: pageUrlString,
+        pageHistory: pageHistory,
+        sessionDuration: sessionDuration,
+        timestamp: testData.timestamp,
         status: "new_record",
       },
     });
