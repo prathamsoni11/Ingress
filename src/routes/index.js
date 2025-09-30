@@ -1058,7 +1058,7 @@ router.get(
  *                 type: string
  *                 example: "session-abc123xyz"
  *                 description: Unique session identifier
-               pageUrl:
+ *               pageUrl:
  *                 oneOf:
  *                   - type: string
  *                     example: "https://example.com/landing-page"
