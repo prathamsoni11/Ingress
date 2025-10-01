@@ -1111,7 +1111,32 @@ router.get(
  */
 router.post("/simple-test", async (req, res) => {
   try {
+    // Debug: Log all incoming request data
+    Logger.info("SimpleTest", "Incoming request received", {
+      method: req.method,
+      url: req.url,
+      headers: {
+        "content-type": req.headers["content-type"],
+        "user-agent": req.headers["user-agent"],
+        origin: req.headers.origin,
+        "x-forwarded-for": req.headers["x-forwarded-for"],
+      },
+      bodySize: JSON.stringify(req.body).length,
+      rawBody: req.body,
+    });
+
     const { sessionId, pageUrl, timestamp, timezone } = req.body;
+
+    // Debug: Log extracted data
+    Logger.info("SimpleTest", "Extracted request data", {
+      sessionId,
+      pageUrl: Array.isArray(pageUrl)
+        ? `Array[${pageUrl.length}]`
+        : typeof pageUrl,
+      timestamp,
+      timezone: typeof timezone,
+      timezoneValue: timezone,
+    });
 
     // Auto-detect IP address from request headers (no need for client to send it)
     const ipAddress =
@@ -1195,11 +1220,27 @@ router.post("/simple-test", async (req, res) => {
     // Validate required fields - only sessionId is required now
     const validation = validateRequiredFields(req.body, ["sessionId"]);
     if (!validation.isValid) {
+      Logger.warn("SimpleTest", "Validation failed", {
+        body: req.body,
+        validationMessage: validation.message,
+      });
+
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
         message: validation.message,
+        debug: {
+          receivedFields: Object.keys(req.body),
+          requiredFields: ["sessionId"],
+          body: req.body,
+        },
       });
     }
+
+    Logger.info("SimpleTest", "Validation passed", {
+      sessionId,
+      hasPageUrl: !!pageUrl,
+      hasTimezone: !!timezone,
+    });
 
     Logger.info("SimpleTest", "New simple test data", {
       ipAddress,
@@ -1230,6 +1271,15 @@ router.post("/simple-test", async (req, res) => {
       userAgent: req.headers["user-agent"] || "unknown",
       ipAnalysis: ipAnalysis,
     };
+
+    Logger.info("SimpleTest", "Created session data", {
+      sessionId,
+      pageHistoryLength: pageHistory.length,
+      sessionDurationMs,
+      estTimestamp,
+      ipAddress,
+      ipAnalysisType: ipAnalysis.type,
+    });
 
     if (!existingIpQuery.empty) {
       // IP exists - add new session to existing document
@@ -1328,6 +1378,55 @@ router.post("/simple-test", async (req, res) => {
         process.env.NODE_ENV === "development"
           ? error.message
           : "Internal server error",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/debug-test:
+ *   post:
+ *     summary: Debug endpoint to test request reception
+ *     description: Simple endpoint to verify server is receiving requests (no authentication required)
+ *     tags: [Testing]
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Request received successfully
+ */
+router.post("/debug-test", async (req, res) => {
+  try {
+    Logger.info("DebugTest", "Debug request received", {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      body: req.body,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: "Debug request received successfully",
+      data: {
+        receivedAt: new Date().toISOString(),
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: req.body,
+        bodySize: JSON.stringify(req.body).length,
+      },
+    });
+  } catch (error) {
+    Logger.error("DebugTest", "Debug test error", error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Debug test failed",
+      error: error.message,
     });
   }
 });
