@@ -1046,6 +1046,7 @@ router.get(
  *             type: object
  *             required:
  *               - sessionId
+ *               - clientIP
  *             properties:
  *               sessionId:
  *                 type: string
@@ -1072,7 +1073,7 @@ router.get(
  *               clientIP:
  *                 type: string
  *                 example: "203.0.113.45"
- *                 description: Client's public IP address (optional, server will detect if not provided)
+ *                 description: Client's public IP address (required, provided by frontend script)
  *     responses:
  *       200:
  *         description: Data stored successfully
@@ -1143,15 +1144,8 @@ router.post("/simple-test", async (req, res) => {
       clientIP,
     });
 
-    // Use client-provided IP if available, otherwise fallback to server detection
-    const ipAddress =
-      clientIP ||
-      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-      req.headers["x-real-ip"] ||
-      req.connection.remoteAddress ||
-      req.socket.remoteAddress ||
-      (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
-      "unknown";
+    // Use client-provided IP (frontend script will always send this)
+    const ipAddress = clientIP || "unknown";
 
     // Analyze IP type and reliability for tracking accuracy
     const analyzeIP = (ip) => {
@@ -1223,8 +1217,11 @@ router.post("/simple-test", async (req, res) => {
     const sessionDurationMs =
       typeof timezone === "number" ? timezone : parseInt(timezone) || 0;
 
-    // Validate required fields - only sessionId is required now
-    const validation = validateRequiredFields(req.body, ["sessionId"]);
+    // Validate required fields - sessionId and clientIP are required
+    const validation = validateRequiredFields(req.body, [
+      "sessionId",
+      "clientIP",
+    ]);
     if (!validation.isValid) {
       Logger.warn("SimpleTest", "Validation failed", {
         body: req.body,
@@ -1236,7 +1233,7 @@ router.post("/simple-test", async (req, res) => {
         message: validation.message,
         debug: {
           receivedFields: Object.keys(req.body),
-          requiredFields: ["sessionId"],
+          requiredFields: ["sessionId", "clientIP"],
           body: req.body,
         },
       });
@@ -1252,7 +1249,7 @@ router.post("/simple-test", async (req, res) => {
       ipAddress,
       sessionId,
       pageUrl,
-      ipSource: clientIP ? "client-provided" : "server-detected",
+      ipSource: "client-provided",
     });
 
     // Check if IP address already exists in the database
