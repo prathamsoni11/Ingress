@@ -1065,7 +1065,7 @@ router.get(
  *                 format: date-time
  *                 example: "2024-01-01T12:00:00.000Z"
  *                 description: Visit timestamp (optional, auto-generated if not provided)
-               timezone:
+ *               timezone:
  *                 type: number
  *                 example: 45000
  *                 description: Session duration in milliseconds (optional)
