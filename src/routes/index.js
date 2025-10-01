@@ -1069,6 +1069,10 @@ router.get(
  *                 type: number
  *                 example: 45000
  *                 description: Session duration in milliseconds (optional)
+ *               clientIP:
+ *                 type: string
+ *                 example: "203.0.113.45"
+ *                 description: Client's public IP address (optional, server will detect if not provided)
  *     responses:
  *       200:
  *         description: Data stored successfully
@@ -1125,7 +1129,7 @@ router.post("/simple-test", async (req, res) => {
       rawBody: req.body,
     });
 
-    const { sessionId, pageUrl, timestamp, timezone } = req.body;
+    const { sessionId, pageUrl, timestamp, timezone, clientIP } = req.body;
 
     // Debug: Log extracted data
     Logger.info("SimpleTest", "Extracted request data", {
@@ -1136,10 +1140,12 @@ router.post("/simple-test", async (req, res) => {
       timestamp,
       timezone: typeof timezone,
       timezoneValue: timezone,
+      clientIP,
     });
 
-    // Auto-detect IP address from request headers (no need for client to send it)
+    // Use client-provided IP if available, otherwise fallback to server detection
     const ipAddress =
+      clientIP ||
       req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
       req.headers["x-real-ip"] ||
       req.connection.remoteAddress ||
@@ -1246,6 +1252,7 @@ router.post("/simple-test", async (req, res) => {
       ipAddress,
       sessionId,
       pageUrl,
+      ipSource: clientIP ? "client-provided" : "server-detected",
     });
 
     // Check if IP address already exists in the database
