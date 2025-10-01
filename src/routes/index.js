@@ -1044,7 +1044,7 @@ router.get(
  *         application/json:
  *           schema:
  *             type: object
-             required:
+ *             required:
  *               - sessionId
  *             properties:
  *               sessionId:
