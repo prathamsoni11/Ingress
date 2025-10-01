@@ -1044,16 +1044,9 @@ router.get(
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - ipAddress
+             required:
  *               - sessionId
- *               - pageUrl
- *               - timestamp
  *             properties:
- *               ipAddress:
- *                 type: string
- *                 example: "203.0.113.1"
- *                 description: Visitor's IP address
  *               sessionId:
  *                 type: string
  *                 example: "session-abc123xyz"
@@ -1072,10 +1065,10 @@ router.get(
  *                 format: date-time
  *                 example: "2024-01-01T12:00:00.000Z"
  *                 description: Visit timestamp (optional, auto-generated if not provided)
- *               timezone:
- *                 type: string
- *                 example: "45 seconds"
- *                 description: Session duration in human-readable format (optional)
+               timezone:
+ *                 type: number
+ *                 example: 45000
+ *                 description: Session duration in milliseconds (optional)
  *     responses:
  *       200:
  *         description: Data stored successfully
@@ -1118,20 +1111,89 @@ router.get(
  */
 router.post("/simple-test", async (req, res) => {
   try {
-    const { ipAddress, sessionId, pageUrl, timestamp, timezone } = req.body;
+    const { sessionId, pageUrl, timestamp, timezone } = req.body;
 
-    // Handle both old format (pageUrl as string) and new format (pageUrl as array)
-    const pageUrlString = Array.isArray(pageUrl)
-      ? pageUrl[pageUrl.length - 1] || "unknown"
-      : pageUrl;
-    const pageHistory = Array.isArray(pageUrl) ? pageUrl : [pageUrl];
+    // Auto-detect IP address from request headers (no need for client to send it)
+    const ipAddress =
+      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+      req.headers["x-real-ip"] ||
+      req.connection.remoteAddress ||
+      req.socket.remoteAddress ||
+      (req.connection.socket ? req.connection.socket.remoteAddress : null) ||
+      "unknown";
 
-    // Handle session duration (timezone field contains duration)
-    const sessionDuration = timezone || "unknown";
+    // Analyze IP type and reliability for tracking accuracy
+    const analyzeIP = (ip) => {
+      if (!ip || ip === "unknown")
+        return { type: "unknown", reliability: "none" };
 
-    // Validate required fields (flexible validation)
-    const requiredFields = ["ipAddress", "sessionId"];
-    const validation = validateRequiredFields(req.body, requiredFields);
+      // Check for private/local IPs (won't give real location)
+      if (
+        ip.startsWith("192.168.") ||
+        ip.startsWith("10.") ||
+        ip.startsWith("172.")
+      ) {
+        return {
+          type: "private",
+          reliability: "low",
+          note: "Private network IP - no geolocation",
+        };
+      }
+
+      // Check for localhost (development)
+      if (ip === "127.0.0.1" || ip === "::1") {
+        return {
+          type: "localhost",
+          reliability: "none",
+          note: "Local development",
+        };
+      }
+
+      // Check if behind proxy/CDN (common for production)
+      const xForwardedFor = req.headers["x-forwarded-for"];
+      const xRealIp = req.headers["x-real-ip"];
+
+      if (xForwardedFor) {
+        const ips = xForwardedFor.split(",").map((ip) => ip.trim());
+        return {
+          type: "proxied",
+          reliability: "high",
+          note: `Behind proxy/CDN - original IP chain: ${ips.join(" -> ")}`,
+          ipChain: ips,
+        };
+      }
+
+      if (xRealIp) {
+        return {
+          type: "proxied",
+          reliability: "high",
+          note: "Behind reverse proxy",
+        };
+      }
+
+      // Direct connection (best for accuracy)
+      return {
+        type: "direct",
+        reliability: "high",
+        note: "Direct connection - most accurate",
+      };
+    };
+
+    const ipAnalysis = analyzeIP(ipAddress);
+
+    // Handle pageUrl as array (page history)
+    const pageHistory = Array.isArray(pageUrl)
+      ? pageUrl
+      : pageUrl
+      ? [pageUrl]
+      : [];
+
+    // Handle session duration - expecting raw milliseconds
+    const sessionDurationMs =
+      typeof timezone === "number" ? timezone : parseInt(timezone) || 0;
+
+    // Validate required fields - only sessionId is required now
+    const validation = validateRequiredFields(req.body, ["sessionId"]);
     if (!validation.isValid) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
@@ -1152,44 +1214,83 @@ router.post("/simple-test", async (req, res) => {
       .limit(1)
       .get();
 
+    // Convert timestamp to EST timezone
+    const estTimestamp = timestamp
+      ? new Date(timestamp).toLocaleString("en-US", {
+          timeZone: "America/New_York",
+        })
+      : new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+
+    // Create new session data
+    const newSession = {
+      sessionId,
+      pageHistory: pageHistory,
+      sessionDurationMs: sessionDurationMs,
+      timestamp: estTimestamp,
+      userAgent: req.headers["user-agent"] || "unknown",
+      ipAnalysis: ipAnalysis,
+    };
+
     if (!existingIpQuery.empty) {
+      // IP exists - add new session to existing document
       const existingDoc = existingIpQuery.docs[0];
       const existingData = existingDoc.data();
 
-      Logger.info("SimpleTest", "IP address already exists, skipping insert", {
+      // Get existing sessions array or create new one
+      const existingSessions = existingData.sessions || [];
+
+      // Add new session to the array
+      existingSessions.push(newSession);
+
+      // Update the document with new session
+      await db.collection("simple_test_data").doc(existingDoc.id).update({
+        sessions: existingSessions,
+        lastVisit: estTimestamp,
+        totalSessions: existingSessions.length,
+        // Update latest session info for quick access
+        latestSessionId: sessionId,
+        latestPageHistory: pageHistory,
+        latestSessionDurationMs: sessionDurationMs,
+        latestIpAnalysis: ipAnalysis,
+      });
+
+      Logger.info("SimpleTest", "Added new session to existing IP", {
         ipAddress,
-        existingDocId: existingDoc.id,
-        existingTimestamp: existingData.timestamp,
+        docId: existingDoc.id,
+        sessionCount: existingSessions.length,
+        newSessionId: sessionId,
       });
 
       return res.status(HTTP_STATUS.OK).json({
         success: true,
-        message: "IP address already exists in database",
+        message: "New session added to existing IP",
         data: {
           id: existingDoc.id,
           ipAddress: existingData.ipAddress,
-          sessionId: existingData.sessionId,
-          pageUrl: existingData.pageUrl,
-          pageHistory: existingData.pageHistory || [existingData.pageUrl],
-          sessionDuration: existingData.sessionDuration || "unknown",
-          timestamp: existingData.timestamp,
-          status: "already_exists",
-          firstSeen: existingData.collectedAt,
+          firstSeen: existingData.firstSeen,
+          lastVisit: estTimestamp,
+          totalSessions: existingSessions.length,
+          latestSession: newSession,
+          allSessions: existingSessions,
+          status: "session_added",
         },
       });
     }
 
-    // IP doesn't exist, proceed with storing new data
+    // IP doesn't exist, create new document with sessions array
     const testData = {
       ipAddress,
-      sessionId,
-      pageUrl: pageUrlString, // Store the last/current page URL
-      pageHistory: pageHistory, // Store full page history
-      sessionDuration: sessionDuration, // Store session duration
-      timestamp: timestamp || new Date().toISOString(),
-      // Add some metadata
-      collectedAt: new Date().toISOString(),
-      userAgent: req.headers["user-agent"] || "unknown",
+      firstSeen: estTimestamp,
+      lastVisit: estTimestamp,
+      totalSessions: 1,
+      // Latest session info for quick access
+      latestSessionId: sessionId,
+      latestPageHistory: pageHistory,
+      latestSessionDurationMs: sessionDurationMs,
+      latestIpAnalysis: ipAnalysis,
+      // All sessions stored in array
+      sessions: [newSession],
+      // Metadata
       source: "simple-test-endpoint",
     };
 
@@ -1205,16 +1306,16 @@ router.post("/simple-test", async (req, res) => {
     // Return success response
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      message: "Test data stored successfully",
+      message: "New IP tracked with first session",
       data: {
         id: docRef.id,
         ipAddress,
-        sessionId,
-        pageUrl: pageUrlString,
-        pageHistory: pageHistory,
-        sessionDuration: sessionDuration,
-        timestamp: testData.timestamp,
-        status: "new_record",
+        firstSeen: testData.firstSeen,
+        lastVisit: testData.lastVisit,
+        totalSessions: 1,
+        latestSession: newSession,
+        allSessions: testData.sessions,
+        status: "new_ip",
       },
     });
   } catch (error) {
