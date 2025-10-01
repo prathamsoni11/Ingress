@@ -1035,8 +1035,8 @@ router.get(
  * @swagger
  * /api/simple-test:
  *   post:
- *     summary: Simple testing endpoint for manual testing
- *     description: Basic endpoint to collect visitor data for testing (no authentication required)
+ *     summary: Simple data collection endpoint
+ *     description: Stores visitor data from frontend script (no authentication required)
  *     tags: [Testing]
  *     requestBody:
  *       required: true
@@ -1046,34 +1046,25 @@ router.get(
  *             type: object
  *             required:
  *               - sessionId
- *               - clientIP
  *             properties:
  *               sessionId:
  *                 type: string
- *                 example: "session-abc123xyz"
+ *                 example: "test-session-abc123xyz"
  *                 description: Unique session identifier
- *               pageUrl:
- *                 oneOf:
- *                   - type: string
- *                     example: "https://example.com/landing-page"
- *                   - type: array
- *                     items:
- *                       type: string
- *                     example: ["https://example.com/home", "https://example.com/about"]
- *                 description: Current page URL (string) or page history (array)
- *               timestamp:
- *                 type: string
- *                 format: date-time
- *                 example: "2024-01-01T12:00:00.000Z"
- *                 description: Visit timestamp (optional, auto-generated if not provided)
- *               timezone:
- *                 type: number
- *                 example: 45000
- *                 description: Session duration in milliseconds (optional)
- *               clientIP:
+ *               ipAddress:
  *                 type: string
  *                 example: "203.0.113.45"
- *                 description: Client's public IP address (required, provided by frontend script)
+ *                 description: User's IP address
+ *               pageUrl:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["https://example.com/home", "https://example.com/about"]
+ *                 description: Page history array
+ *               timezone:
+ *                 type: string
+ *                 example: "2 minutes"
+ *                 description: Formatted session duration
  *     responses:
  *       200:
  *         description: Data stored successfully
@@ -1087,301 +1078,58 @@ router.get(
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Test data stored successfully"
- *                 data:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: string
- *                       description: Firebase document ID
- *                     ipAddress:
- *                       type: string
- *                     sessionId:
- *                       type: string
- *                     pageUrl:
- *                       type: string
- *                     timestamp:
- *                       type: string
- *                     status:
- *                       type: string
- *                       enum: [new_record, already_exists]
- *                       description: Whether this is a new record or IP already existed
- *                     firstSeen:
- *                       type: string
- *                       description: When this IP was first seen (only for already_exists)
+ *                   example: "Data stored successfully"
+ *                 id:
+ *                   type: string
+ *                   description: Firebase document ID
  *       400:
- *         description: Missing required fields
+ *         description: Missing sessionId
  *       500:
  *         description: Server error
  */
 router.post("/simple-test", async (req, res) => {
   try {
-    // Debug: Log all incoming request data
-    Logger.info("SimpleTest", "Incoming request received", {
-      method: req.method,
-      url: req.url,
-      headers: {
-        "content-type": req.headers["content-type"],
-        "user-agent": req.headers["user-agent"],
-        origin: req.headers.origin,
-        "x-forwarded-for": req.headers["x-forwarded-for"],
-      },
-      bodySize: JSON.stringify(req.body).length,
-      rawBody: req.body,
-    });
+    const { ipAddress, sessionId, pageUrl, timezone } = req.body;
 
-    const { sessionId, pageUrl, timestamp, timezone, clientIP } = req.body;
-
-    // Debug: Log extracted data
-    Logger.info("SimpleTest", "Extracted request data", {
-      sessionId,
-      pageUrl: Array.isArray(pageUrl)
-        ? `Array[${pageUrl.length}]`
-        : typeof pageUrl,
-      timestamp,
-      timezone: typeof timezone,
-      timezoneValue: timezone,
-      clientIP,
-    });
-
-    // Use client-provided IP (frontend script will always send this)
-    const ipAddress = clientIP || "unknown";
-
-    // Analyze IP type and reliability for tracking accuracy
-    const analyzeIP = (ip) => {
-      if (!ip || ip === "unknown")
-        return { type: "unknown", reliability: "none" };
-
-      // Check for private/local IPs (won't give real location)
-      if (
-        ip.startsWith("192.168.") ||
-        ip.startsWith("10.") ||
-        ip.startsWith("172.")
-      ) {
-        return {
-          type: "private",
-          reliability: "low",
-          note: "Private network IP - no geolocation",
-        };
-      }
-
-      // Check for localhost (development)
-      if (ip === "127.0.0.1" || ip === "::1") {
-        return {
-          type: "localhost",
-          reliability: "none",
-          note: "Local development",
-        };
-      }
-
-      // Check if behind proxy/CDN (common for production)
-      const xForwardedFor = req.headers["x-forwarded-for"];
-      const xRealIp = req.headers["x-real-ip"];
-
-      if (xForwardedFor) {
-        const ips = xForwardedFor.split(",").map((ip) => ip.trim());
-        return {
-          type: "proxied",
-          reliability: "high",
-          note: `Behind proxy/CDN - original IP chain: ${ips.join(" -> ")}`,
-          ipChain: ips,
-        };
-      }
-
-      if (xRealIp) {
-        return {
-          type: "proxied",
-          reliability: "high",
-          note: "Behind reverse proxy",
-        };
-      }
-
-      // Direct connection (best for accuracy)
-      return {
-        type: "direct",
-        reliability: "high",
-        note: "Direct connection - most accurate",
-      };
-    };
-
-    const ipAnalysis = analyzeIP(ipAddress);
-
-    // Handle pageUrl as array (page history)
-    const pageHistory = Array.isArray(pageUrl)
-      ? pageUrl
-      : pageUrl
-      ? [pageUrl]
-      : [];
-
-    // Handle session duration - expecting raw milliseconds
-    const sessionDurationMs =
-      typeof timezone === "number" ? timezone : parseInt(timezone) || 0;
-
-    // Validate required fields - sessionId and clientIP are required
-    const validation = validateRequiredFields(req.body, [
-      "sessionId",
-      "clientIP",
-    ]);
-    if (!validation.isValid) {
-      Logger.warn("SimpleTest", "Validation failed", {
-        body: req.body,
-        validationMessage: validation.message,
-      });
-
+    // Simple validation - just check if we have the basic data
+    if (!sessionId) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
-        message: validation.message,
-        debug: {
-          receivedFields: Object.keys(req.body),
-          requiredFields: ["sessionId", "clientIP"],
-          body: req.body,
-        },
+        message: "sessionId is required",
       });
     }
 
-    Logger.info("SimpleTest", "Validation passed", {
-      sessionId,
-      hasPageUrl: !!pageUrl,
-      hasTimezone: !!timezone,
-    });
-
-    Logger.info("SimpleTest", "New simple test data", {
-      ipAddress,
-      sessionId,
-      pageUrl,
-      ipSource: "client-provided",
-    });
-
-    // Check if IP address already exists in the database
-    const existingIpQuery = await db
-      .collection("simple_test_data")
-      .where("ipAddress", "==", ipAddress)
-      .limit(1)
-      .get();
-
-    // Convert timestamp to EST timezone
-    const estTimestamp = timestamp
-      ? new Date(timestamp).toLocaleString("en-US", {
-          timeZone: "America/New_York",
-        })
-      : new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
-
-    // Create new session data
-    const newSession = {
-      sessionId,
-      pageHistory: pageHistory,
-      sessionDurationMs: sessionDurationMs,
-      timestamp: estTimestamp,
-      userAgent: req.headers["user-agent"] || "unknown",
-      ipAnalysis: ipAnalysis,
-    };
-
-    Logger.info("SimpleTest", "Created session data", {
-      sessionId,
-      pageHistoryLength: pageHistory.length,
-      sessionDurationMs,
-      estTimestamp,
-      ipAddress,
-      ipAnalysisType: ipAnalysis.type,
-    });
-
-    if (!existingIpQuery.empty) {
-      // IP exists - add new session to existing document
-      const existingDoc = existingIpQuery.docs[0];
-      const existingData = existingDoc.data();
-
-      // Get existing sessions array or create new one
-      const existingSessions = existingData.sessions || [];
-
-      // Add new session to the array
-      existingSessions.push(newSession);
-
-      // Update the document with new session
-      await db.collection("simple_test_data").doc(existingDoc.id).update({
-        sessions: existingSessions,
-        lastVisit: estTimestamp,
-        totalSessions: existingSessions.length,
-        // Update latest session info for quick access
-        latestSessionId: sessionId,
-        latestPageHistory: pageHistory,
-        latestSessionDurationMs: sessionDurationMs,
-        latestIpAnalysis: ipAnalysis,
-      });
-
-      Logger.info("SimpleTest", "Added new session to existing IP", {
-        ipAddress,
-        docId: existingDoc.id,
-        sessionCount: existingSessions.length,
-        newSessionId: sessionId,
-      });
-
-      return res.status(HTTP_STATUS.OK).json({
-        success: true,
-        message: "New session added to existing IP",
-        data: {
-          id: existingDoc.id,
-          ipAddress: existingData.ipAddress,
-          firstSeen: existingData.firstSeen,
-          lastVisit: estTimestamp,
-          totalSessions: existingSessions.length,
-          latestSession: newSession,
-          allSessions: existingSessions,
-          status: "session_added",
-        },
-      });
-    }
-
-    // IP doesn't exist, create new document with sessions array
+    // Create the data object exactly as received from frontend
     const testData = {
-      ipAddress,
-      firstSeen: estTimestamp,
-      lastVisit: estTimestamp,
-      totalSessions: 1,
-      // Latest session info for quick access
-      latestSessionId: sessionId,
-      latestPageHistory: pageHistory,
-      latestSessionDurationMs: sessionDurationMs,
-      latestIpAnalysis: ipAnalysis,
-      // All sessions stored in array
-      sessions: [newSession],
-      // Metadata
-      source: "simple-test-endpoint",
+      ipAddress: ipAddress || "unknown",
+      sessionId,
+      pageUrl: pageUrl || [],
+      sessionDuration: timezone || "0 seconds",
+      timestamp: new Date().toISOString(),
+      userAgent: req.headers["user-agent"] || "unknown",
+      createdAt: new Date().toISOString(),
     };
 
     // Store in Firebase
     const docRef = await db.collection("simple_test_data").add(testData);
 
-    Logger.info("SimpleTest", "New test data stored successfully", {
+    Logger.info("SimpleTest", "Data stored successfully", {
       docId: docRef.id,
-      ipAddress,
-      sessionId,
+      ipAddress: testData.ipAddress,
+      sessionId: testData.sessionId,
     });
 
-    // Return success response
+    // Return simple success response
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      message: "New IP tracked with first session",
-      data: {
-        id: docRef.id,
-        ipAddress,
-        firstSeen: testData.firstSeen,
-        lastVisit: testData.lastVisit,
-        totalSessions: 1,
-        latestSession: newSession,
-        allSessions: testData.sessions,
-        status: "new_ip",
-      },
+      message: "Data stored successfully",
+      id: docRef.id,
     });
   } catch (error) {
-    Logger.error("SimpleTest", "Error storing test data", error);
-
+    Logger.error("SimpleTest", "Error storing data", error);
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
-      message: "Failed to store test data",
-      error:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : "Internal server error",
+      message: "Failed to store data",
     });
   }
 });
