@@ -6,69 +6,43 @@ const swaggerUi = require("swagger-ui-express");
 
 const routes = require("./routes");
 const middleware = require("./middleware");
-const { rateLimiter } = require("./middleware/auth");
-const UserService = require("./services/userService");
 const Logger = require("./utils/logger");
 const { HTTP_STATUS } = require("./utils/constants");
 const { getEnv, getEnvNumber } = require("./utils/env");
 
 const app = express();
 
-// Initialize application
-const initializeApp = async () => {
-  try {
-    Logger.info("App", "Initializing Ingress application...");
-
-    // Initialize admin user
-    await UserService.initializeAdmin();
-
-    Logger.info("App", "Application initialized successfully");
-  } catch (error) {
-    Logger.error("App", "Failed to initialize application", error);
-    process.exit(1);
-  }
-};
-
-// Initialize app
-initializeApp();
-
-// Trust proxy for rate limiting and IP detection
+// Trust proxy for IP detection
 app.set("trust proxy", 1);
 
 // CORS configuration
 const corsOptions = {
-  origin: getEnv("CORS_ORIGIN"),
+  origin: "*", // Allow all origins for simple test endpoint
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"],
 };
 
 app.use(cors(corsOptions));
 
-// Apply rate limiting
-app.use(rateLimiter);
-
 // Apply middleware
 middleware(app);
 
-// Health check route (no auth required)
+// Health check route
 app.get("/health", (req, res) => {
   res.status(HTTP_STATUS.OK).json({
     status: "healthy",
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    version: getEnv("API_VERSION"),
-    environment: getEnv("NODE_ENV"),
   });
 });
 
 // Root route
 app.get("/", (req, res) => {
   res.status(HTTP_STATUS.OK).json({
-    message: "Welcome to Ingress Server",
+    message: "Simple Test Data Collection Server",
     status: "running",
     timestamp: new Date().toISOString(),
-    version: getEnv("API_VERSION"),
     documentation: "/api-docs",
   });
 });
@@ -78,34 +52,14 @@ const swaggerOptions = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: getEnv("API_TITLE"),
-      version: getEnv("API_VERSION"),
-      description: getEnv("API_DESCRIPTION"),
-      contact: {
-        name: "API Support",
-        email: "support@consultadd.com",
-      },
+      title: "Simple Test API",
+      version: "1.0.0",
+      description: "Simple data collection API for frontend scripts",
     },
     servers: [
       {
         url: `http://localhost:${getEnvNumber("PORT")}`,
         description: "Development server",
-      },
-    ],
-    components: {
-      securitySchemes: {
-        BearerAuth: {
-          type: "http",
-          scheme: "bearer",
-          bearerFormat: "JWT",
-          description:
-            "JWT token authentication. Get your token from POST /api/login",
-        },
-      },
-    },
-    security: [
-      {
-        BearerAuth: [],
       },
     ],
   },
@@ -118,7 +72,7 @@ app.use(
   swaggerUi.serve,
   swaggerUi.setup(specs, {
     customCss: ".swagger-ui .topbar { display: none }",
-    customSiteTitle: "Ingress API Documentation",
+    customSiteTitle: "Simple Test API Documentation",
   })
 );
 
@@ -130,16 +84,5 @@ app.use(middleware.errorHandler);
 
 // 404 handler (must be last)
 app.use("*", middleware.notFoundHandler);
-
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  Logger.info("App", "SIGTERM received, shutting down gracefully");
-  process.exit(0);
-});
-
-process.on("SIGINT", () => {
-  Logger.info("App", "SIGINT received, shutting down gracefully");
-  process.exit(0);
-});
 
 module.exports = app;

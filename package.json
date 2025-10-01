@@ -5,9 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "lint": "echo 'Linting not configured'",
-    "clean": "echo 'Cleaning cache and logs'"
+    "dev": "nodemon server.js"
   },
   "keywords": [
     "express",
