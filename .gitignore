@@ -90,3 +90,10 @@ Thumbs.db
 
 # TernJS port file
 .tern-port
+
+# Test files (exclude from production)
+test-*.html
+test-*.js
+*-test.html
+*-test.js
+ip-test.html

@@ -15,15 +15,50 @@ const app = express();
 // Trust proxy for IP detection
 app.set("trust proxy", 1);
 
-// CORS configuration
+// CORS configuration - Allow all origins for local testing
 const corsOptions = {
-  origin: "*", // Allow all origins for simple test endpoint
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow all origins for local development
+    if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('file://')) {
+      return callback(null, true);
+    }
+    
+    // Allow all origins (for testing)
+    return callback(null, true);
+  },
   credentials: true,
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+  exposedHeaders: ["Content-Length", "X-Foo", "X-Bar"],
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
+
+// Additional CORS headers for maximum compatibility
+app.use((req, res, next) => {
+  // Set CORS headers explicitly
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header("Access-Control-Allow-Origin", origin);
+  } else {
+    res.header("Access-Control-Allow-Origin", "*");
+  }
+  
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+  
+  if (req.method === "OPTIONS") {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
 
 // Apply middleware
 middleware(app);

@@ -7,11 +7,11 @@ const { HTTP_STATUS } = require("../utils/constants");
 
 /**
  * @swagger
- * /api/simple-test:
+ * /api/track-session:
  *   post:
- *     summary: Simple data collection endpoint
- *     description: Stores visitor data from frontend script (no authentication required)
- *     tags: [Testing]
+ *     summary: Session tracking endpoint
+ *     description: Tracks and stores visitor session data including IP, duration, and page history
+ *     tags: [Analytics]
  *     requestBody:
  *       required: true
  *       content:
@@ -61,9 +61,15 @@ const { HTTP_STATUS } = require("../utils/constants");
  *       500:
  *         description: Server error
  */
-router.post("/simple-test", async (req, res) => {
+router.post("/track-session", async (req, res) => {
   try {
     const { ipAddress, sessionId, pageUrl, timezone } = req.body;
+
+    // Log basic info only
+    Logger.info("SessionTracker", "Session data received", {
+      sessionId,
+      ipAddress: ipAddress || "unknown"
+    });
 
     // Simple validation - just check if we have the basic data
     if (!sessionId) {
@@ -73,37 +79,150 @@ router.post("/simple-test", async (req, res) => {
       });
     }
 
-    // Create the data object exactly as received from frontend
-    const testData = {
-      ipAddress: ipAddress || "unknown",
+    const clientIP = ipAddress || "unknown";
+
+    // Parse duration (could be string or number)
+    const durationMs = typeof timezone === 'number' ? timezone : parseInt(timezone) || 0;
+
+    // Create session data object with single timestamp
+    const sessionData = {
       sessionId,
       pageUrl: pageUrl || [],
-      sessionDuration: timezone || "0 seconds",
-      timestamp: new Date().toISOString(),
-      userAgent: req.headers["user-agent"] || "unknown",
-      createdAt: new Date().toISOString(),
+      sessionDurationMs: durationMs, // Raw milliseconds value only
+      timestamp: new Date().toISOString(), // Standard ISO format for easy timezone conversion
+      userAgent: req.headers["user-agent"] || "unknown"
+    };
+
+    // Check if IP already exists in the database
+    const existingIpQuery = await db
+      .collection("session_analytics")
+      .where("ipAddress", "==", clientIP)
+      .limit(1)
+      .get();
+
+    if (!existingIpQuery.empty) {
+      // IP exists - add new session to existing document
+      const existingDoc = existingIpQuery.docs[0];
+      const existingData = existingDoc.data();
+
+      // Get existing sessions array or create new one
+      const existingSessions = existingData.sessions || [];
+
+      // Add new session to the array
+      existingSessions.push(sessionData);
+
+      // Update the document with new session
+      await db.collection("session_analytics").doc(existingDoc.id).update({
+        sessions: existingSessions,
+        lastVisit: new Date().toISOString(), // Standard ISO format
+        totalSessions: existingSessions.length,
+        // Update latest session info for quick access
+        latestSessionId: sessionId,
+        latestPageUrl: pageUrl || [],
+        latestSessionDurationMs: durationMs, // Raw milliseconds only
+        updatedAt: new Date().toISOString()
+      });
+
+      Logger.info("SessionTracker", "Added new session to existing IP", {
+        ipAddress: clientIP,
+        docId: existingDoc.id,
+        sessionCount: existingSessions.length,
+        newSessionId: sessionId,
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: "Session added to existing IP record",
+        id: existingDoc.id,
+        sessionCount: existingSessions.length,
+        status: "session_added"
+      });
+    }
+
+    // IP doesn't exist, create new document with sessions array
+    const currentTimestamp = new Date().toISOString();
+    const newIpData = {
+      ipAddress: clientIP,
+      firstVisit: currentTimestamp, // Standard ISO format
+      lastVisit: currentTimestamp,  // Standard ISO format
+      totalSessions: 1,
+      // Latest session info for quick access
+      latestSessionId: sessionId,
+      latestPageUrl: pageUrl || [],
+      latestSessionDurationMs: durationMs, // Raw milliseconds only
+      // All sessions stored in array
+      sessions: [sessionData],
+      // Metadata
+      createdAt: currentTimestamp,
+      updatedAt: currentTimestamp
     };
 
     // Store in Firebase
-    const docRef = await db.collection("simple_test_data").add(testData);
+    const docRef = await db.collection("session_analytics").add(newIpData);
 
-    Logger.info("SimpleTest", "Data stored successfully", {
+    Logger.info("SessionTracker", "New IP record created", {
       docId: docRef.id,
-      ipAddress: testData.ipAddress,
-      sessionId: testData.sessionId,
+      ipAddress: clientIP,
+      sessionId: sessionId,
     });
 
-    // Return simple success response
+    // Return success response
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      message: "Data stored successfully",
+      message: "New IP record created with first session",
       id: docRef.id,
+      sessionCount: 1,
+      status: "new_ip"
     });
+
   } catch (error) {
-    Logger.error("SimpleTest", "Error storing data", error);
+    Logger.error("SessionTracker", "Error storing data", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      details: error.details || error
+    });
+    
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
       message: "Failed to store data",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+});
+
+// Test Firebase connection endpoint
+router.get("/test-firebase", async (req, res) => {
+  try {
+    Logger.info("FirebaseTest", "Testing Firebase connection...");
+    
+    // Try to write a simple test document
+    const testData = {
+      test: true,
+      timestamp: new Date().toISOString(),
+      message: "Firebase connection test"
+    };
+    
+    const docRef = await db.collection("system_health").add(testData);
+    
+    Logger.info("FirebaseTest", "Firebase test successful", { docId: docRef.id });
+    
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: "Firebase connection successful",
+      testDocId: docRef.id
+    });
+  } catch (error) {
+    Logger.error("FirebaseTest", "Firebase connection failed", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack
+    });
+    
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Firebase connection failed",
+      error: error.message
     });
   }
 });
