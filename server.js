@@ -1,4 +1,6 @@
-require("dotenv").config();
+// Load environment configuration first
+const environmentConfig = require("./src/config/environment");
+const config = environmentConfig.getConfig();
 
 // Validate environment variables before starting
 const {
@@ -11,20 +13,30 @@ validateEnvironment();
 const app = require("./src/app");
 const Logger = require("./src/utils/logger");
 
-const PORT = getEnvNumber("PORT");
-const NODE_ENV = getEnv("NODE_ENV");
+const PORT = config.port;
+const NODE_ENV = config.environment;
 
 const server = app.listen(PORT, () => {
-  Logger.info("Server", `🚀 Ingress server running on port ${PORT}`);
+  Logger.info("Server", `🚀 Session Analytics API running on port ${PORT}`);
   Logger.info("Server", `📍 Local: http://localhost:${PORT}`);
-  Logger.info(
-    "Server",
-    `📚 API Documentation: http://localhost:${PORT}/api-docs`
-  );
-  Logger.info("Server", `🌍 Environment: ${NODE_ENV}`);
 
-  if (NODE_ENV === "development") {
+  if (config.swaggerEnabled) {
+    Logger.info(
+      "Server",
+      `📚 API Documentation: http://localhost:${PORT}/api-docs`
+    );
+  }
+
+  Logger.info("Server", `🌍 Environment: ${NODE_ENV.toUpperCase()}`);
+  Logger.info("Server", `🔒 CORS Origins: ${config.corsOrigin.join(", ")}`);
+  Logger.info("Server", `📊 Debug Mode: ${config.debug ? "ON" : "OFF"}`);
+
+  if (environmentConfig.isDevelopment()) {
     Logger.info("Server", "🔧 Development mode - detailed logging enabled");
+    Logger.info("Server", "🔄 Auto-reload enabled with nodemon");
+  } else {
+    Logger.info("Server", "🏭 Production mode - optimized for performance");
+    Logger.info("Server", "🔐 Security features enabled");
   }
 });
 

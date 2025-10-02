@@ -1,9 +1,21 @@
 const express = require("express");
 const router = express.Router();
 const { db } = require("../config/firebase");
+const {
+  authenticateJWT,
+  generateToken,
+  requireAdmin,
+  requireRole,
+} = require("../middleware/auth");
+const UserService = require("../services/userService");
 const Logger = require("../utils/logger");
 const { validateRequiredFields } = require("../utils/validators");
-const { HTTP_STATUS } = require("../utils/constants");
+const {
+  HTTP_STATUS,
+  SUCCESS_MESSAGES,
+  JWT,
+  USER_ROLES,
+} = require("../utils/constants");
 
 /**
  * @swagger
@@ -236,6 +248,450 @@ router.get("/test-firebase", async (req, res) => {
       success: false,
       message: "Firebase connection failed",
       error: error.message
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/login:
+ *   post:
+ *     summary: User login
+ *     description: Authenticate user and get JWT token (30 days validity)
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "admin@yourdomain.com"
+ *               password:
+ *                 type: string
+ *                 example: "Admin@123456"
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *       400:
+ *         description: Missing credentials
+ *       401:
+ *         description: Invalid credentials
+ */
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validate required fields
+    const validation = validateRequiredFields(req.body, ["email", "password"]);
+    if (!validation.isValid) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: validation.message,
+      });
+    }
+
+    // Authenticate user
+    const authResult = await UserService.authenticateUser(email, password);
+
+    if (!authResult.success) {
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: authResult.message,
+      });
+    }
+
+    // Generate JWT token
+    const tokenPayload = {
+      userId: authResult.user.id,
+      email: authResult.user.email,
+      role: authResult.user.role,
+      iat: Math.floor(Date.now() / 1000),
+    };
+
+    const token = generateToken(tokenPayload, JWT.DEFAULT_EXPIRES_IN);
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      token: token,
+      user: {
+        id: authResult.user.id,
+        email: authResult.user.email,
+        role: authResult.user.role,
+      },
+      expiresIn: JWT.DEFAULT_EXPIRES_IN,
+      message: SUCCESS_MESSAGES.LOGIN_SUCCESS,
+    });
+  } catch (error) {
+    Logger.error("Auth", "Login error", error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Authentication failed",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users:
+ *   post:
+ *     summary: Create new user (Admin only)
+ *     description: Create a new user account
+ *     tags: [User Management]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "user@yourdomain.com"
+ *               password:
+ *                 type: string
+ *                 example: "SecurePass123"
+ *               role:
+ *                 type: string
+ *                 enum: [user, admin]
+ *                 example: "user"
+ *                 description: User role (defaults to 'user')
+ *     responses:
+ *       201:
+ *         description: User created successfully
+ *       400:
+ *         description: Invalid data or user already exists
+ *       403:
+ *         description: Admin access required
+ */
+router.post("/users", authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { email, password, role } = req.body;
+
+    if (!email || !password) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: "Email and password are required",
+      });
+    }
+
+    const result = await UserService.createUser(
+      email,
+      password,
+      role,
+      req.user.userId
+    );
+
+    if (!result.success) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(HTTP_STATUS.CREATED).json({
+      success: true,
+      message: result.message,
+      userId: result.userId,
+    });
+  } catch (error) {
+    Logger.error("UserManagement", "Create user error", error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to create user",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users:
+ *   get:
+ *     summary: Get all users (Admin only)
+ *     description: Retrieve list of all users
+ *     tags: [User Management]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Users retrieved successfully
+ *       403:
+ *         description: Admin access required
+ */
+router.get("/users", authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const result = await UserService.getAllUsers();
+
+    if (!result.success) {
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      users: result.users,
+      message: "Users retrieved successfully",
+    });
+  } catch (error) {
+    Logger.error("UserManagement", "Get users error", error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to retrieve users",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/{userId}:
+ *   patch:
+ *     summary: Update user status (Admin only)
+ *     description: Activate or deactivate a user
+ *     tags: [User Management]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - isActive
+ *             properties:
+ *               isActive:
+ *                 type: boolean
+ *                 example: true
+ *     responses:
+ *       200:
+ *         description: User status updated successfully
+ *       403:
+ *         description: Admin access required
+ */
+router.patch("/users/:userId", authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { isActive } = req.body;
+
+    if (typeof isActive !== "boolean") {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: "isActive must be a boolean value",
+      });
+    }
+
+    const result = await UserService.updateUserStatus(userId, isActive);
+
+    if (!result.success) {
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    Logger.error("UserManagement", "Update user error", error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to update user",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/users/{userId}:
+ *   delete:
+ *     summary: Delete user (Admin only)
+ *     description: Permanently delete a user
+ *     tags: [User Management]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *       403:
+ *         description: Admin access required
+ */
+router.delete("/users/:userId", authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await UserService.deleteUser(userId);
+
+    if (!result.success) {
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    Logger.error("UserManagement", "Delete user error", error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to delete user",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/dashboard:
+ *   get:
+ *     summary: Get raw dashboard data with pagination
+ *     description: Retrieve raw session analytics data from Firebase with pagination (10 records per page)
+ *     tags: [Dashboard]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number (starts from 1)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *           default: 10
+ *         description: Number of records per page (max 50)
+ *     responses:
+ *       200:
+ *         description: Raw dashboard data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       ipAddress:
+ *                         type: string
+ *                       firstVisit:
+ *                         type: string
+ *                       lastVisit:
+ *                         type: string
+ *                       totalSessions:
+ *                         type: number
+ *                       sessions:
+ *                         type: array
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     currentPage:
+ *                       type: number
+ *                     totalPages:
+ *                       type: number
+ *                     totalRecords:
+ *                       type: number
+ *                     recordsPerPage:
+ *                       type: number
+ *                     hasNextPage:
+ *                       type: boolean
+ *                     hasPrevPage:
+ *                       type: boolean
+ *       401:
+ *         description: Authentication required
+ */
+router.get("/dashboard", authenticateJWT, requireRole([USER_ROLES.USER, USER_ROLES.ADMIN]), async (req, res) => {
+  try {
+    // Parse pagination parameters
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+    const offset = (page - 1) * limit;
+
+    // Get all data first to calculate total
+    const snapshot = await db.collection("session_analytics").orderBy("lastVisit", "desc").get();
+    const allRawData = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Apply pagination
+    const paginatedRawData = allRawData.slice(offset, offset + limit);
+
+    // For normal users, remove IP addresses for privacy
+    const responseData = req.user.role === USER_ROLES.ADMIN 
+      ? paginatedRawData 
+      : paginatedRawData.map(record => {
+          const { ipAddress, ...recordWithoutIP } = record;
+          return {
+            ...recordWithoutIP,
+            ipAddress: "***.***.***.**" // Masked IP for privacy
+          };
+        });
+
+    // Calculate pagination info
+    const totalRecords = allRawData.length;
+    const totalPages = Math.ceil(totalRecords / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: responseData,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalRecords,
+        recordsPerPage: limit,
+        hasNextPage,
+        hasPrevPage,
+        recordsOnCurrentPage: responseData.length
+      },
+      message: "Raw dashboard data retrieved successfully",
+      userRole: req.user.role,
+      note: req.user.role === USER_ROLES.USER ? "IP addresses are masked for privacy" : "Full data access granted"
+    });
+  } catch (error) {
+    Logger.error("Dashboard", "Error retrieving raw dashboard data", error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to retrieve dashboard data",
     });
   }
 });

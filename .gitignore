@@ -11,6 +11,11 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# Keep environment templates but ignore sensitive production configs
+# .env.development - tracked (safe for development)
+# .env.production - tracked (template only, update with real values)
+.env.production.local
+
 # Logs
 logs/
 *.log

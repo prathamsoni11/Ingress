@@ -1,4 +1,7 @@
-require("dotenv").config();
+// Load environment configuration first
+const environmentConfig = require("./config/environment");
+const config = environmentConfig.getConfig();
+
 const express = require("express");
 const cors = require("cors");
 const swaggerJsdoc = require("swagger-jsdoc");
@@ -6,31 +9,61 @@ const swaggerUi = require("swagger-ui-express");
 
 const routes = require("./routes");
 const middleware = require("./middleware");
+const UserService = require("./services/userService");
 const Logger = require("./utils/logger");
 const { HTTP_STATUS } = require("./utils/constants");
 const { getEnv, getEnvNumber } = require("./utils/env");
 
 const app = express();
 
+// Initialize application
+const initializeApp = async () => {
+  try {
+    Logger.info("App", "Initializing application...");
+
+    // Initialize admin user
+    await UserService.initializeAdmin();
+
+    Logger.info("App", "Application initialized successfully");
+  } catch (error) {
+    Logger.error("App", "Failed to initialize application", error);
+    process.exit(1);
+  }
+};
+
+// Initialize app
+initializeApp();
+
 // Trust proxy for IP detection
 app.set("trust proxy", 1);
 
-// CORS configuration - Allow all origins for local testing
+// Environment-specific CORS configuration
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    // Allow all origins for local development
-    if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('file://')) {
-      return callback(null, true);
+    if (config.environment === 'development') {
+      // Development: Allow localhost and file origins
+      if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('file://')) {
+        return callback(null, true);
+      }
+      // Also allow configured development origins
+      if (config.corsOrigin.includes('*') || config.corsOrigin.includes(origin)) {
+        return callback(null, true);
+      }
+    } else {
+      // Production: Only allow configured origins
+      if (config.corsOrigin.includes('*') || config.corsOrigin.includes(origin)) {
+        return callback(null, true);
+      }
     }
     
-    // Allow all origins (for testing)
-    return callback(null, true);
+    // Reject origin
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
   exposedHeaders: ["Content-Length", "X-Foo", "X-Bar"],
   preflightContinue: false,
@@ -82,34 +115,52 @@ app.get("/", (req, res) => {
   });
 });
 
-// Swagger configuration
-const swaggerOptions = {
-  definition: {
-    openapi: "3.0.0",
-    info: {
-      title: "Simple Test API",
-      version: "1.0.0",
-      description: "Simple data collection API for frontend scripts",
-    },
-    servers: [
-      {
-        url: `http://localhost:${getEnvNumber("PORT")}`,
-        description: "Development server",
+// Environment-specific Swagger configuration
+if (config.swaggerEnabled) {
+  const swaggerOptions = {
+    definition: {
+      openapi: "3.0.0",
+      info: {
+        title: "Session Analytics API",
+        version: "2.0.0",
+        description: `Complete session analytics API with user management and JWT authentication - ${config.environment.toUpperCase()} Environment`,
       },
-    ],
-  },
-  apis: ["./src/routes/*.js"],
-};
+      servers: [
+        {
+          url: config.environment === 'production' 
+            ? `https://yourdomain.com` 
+            : `http://localhost:${config.port}`,
+          description: `${config.environment.charAt(0).toUpperCase() + config.environment.slice(1)} server`,
+        },
+      ],
+      components: {
+        securitySchemes: {
+          BearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT",
+            description: "JWT token for authentication (30 days validity)",
+          },
+        },
+      },
+    },
+    apis: ["./src/routes/*.js"],
+  };
 
-const specs = swaggerJsdoc(swaggerOptions);
-app.use(
-  "/api-docs",
-  swaggerUi.serve,
-  swaggerUi.setup(specs, {
-    customCss: ".swagger-ui .topbar { display: none }",
-    customSiteTitle: "Simple Test API Documentation",
-  })
-);
+  const specs = swaggerJsdoc(swaggerOptions);
+  app.use(
+    "/api-docs",
+    swaggerUi.serve,
+    swaggerUi.setup(specs, {
+      customCss: ".swagger-ui .topbar { display: none }",
+      customSiteTitle: `Session Analytics API Documentation - ${config.environment.toUpperCase()}`,
+    })
+  );
+
+  Logger.info("App", `Swagger documentation enabled at /api-docs (${config.environment})`);
+} else {
+  Logger.info("App", "Swagger documentation disabled in production");
+}
 
 // Apply routes
 app.use("/api", routes);
