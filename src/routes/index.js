@@ -28,7 +28,7 @@ const { HTTP_STATUS } = require("../utils/constants");
  *               ipAddress:
  *                 type: string
  *                 example: "203.0.113.45"
- *                 description: User's IP address
+ *                 description: User's IP address (required, cannot be 'unknown')
  *               pageUrl:
  *                 type: array
  *                 items:
@@ -57,7 +57,7 @@ const { HTTP_STATUS } = require("../utils/constants");
  *                   type: string
  *                   description: Firebase document ID
  *       400:
- *         description: Missing sessionId
+ *         description: Invalid request data
  *       500:
  *         description: Server error
  */
@@ -75,11 +75,24 @@ router.post("/track-session", async (req, res) => {
     if (!sessionId) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({
         success: false,
-        message: "sessionId is required",
+        message: "Invalid request data",
       });
     }
 
     const clientIP = ipAddress || "unknown";
+
+    // Reject requests with unknown IP addresses
+    if (!clientIP || clientIP === "unknown") {
+      Logger.warn("SessionTracker", "Rejected request with unknown IP", {
+        sessionId,
+        userAgent: req.headers["user-agent"]
+      });
+
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: "Invalid request data",
+      });
+    }
 
     // Parse duration (could be string or number)
     const durationMs = typeof timezone === 'number' ? timezone : parseInt(timezone) || 0;
