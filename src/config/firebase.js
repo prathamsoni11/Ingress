@@ -26,58 +26,21 @@ try {
     db = admin.firestore();
   }
 } catch (error) {
-  console.error("[Firebase] Error initializing:", error.message);
-  console.error(
-    "[Firebase] Service Account Path:",
-    process.env.FIREBASE_SERVICE_ACCOUNT_PATH
-  );
-  console.error("[Firebase] Project ID:", process.env.FIREBASE_PROJECT_ID);
-  console.log("[Firebase] Falling back to mock database for development");
+  console.log("[Firebase] Using mock database");
 
   // Fallback to mock database with full Firestore API
   db = {
-    collection: (name) => ({
-      add: async (data) => {
-        console.log(
-          `[Mock DB] Adding to ${name}:`,
-          JSON.stringify(data, null, 2)
-        );
-        return { id: "mock_" + Date.now() };
-      },
-      get: async () => ({
-        docs: [],
-        empty: true,
+    collection: () => ({
+      add: async () => ({ id: "mock_" + Date.now() }),
+      get: async () => ({ docs: [], empty: true }),
+      where: () => ({
+        limit: () => ({ get: async () => ({ docs: [], empty: true }) }),
+        get: async () => ({ docs: [], empty: true }),
       }),
-      where: (field, operator, value) => ({
-        limit: (num) => ({
-          get: async () => ({
-            docs: [],
-            empty: true,
-          }),
-        }),
-        get: async () => ({
-          docs: [],
-          empty: true,
-        }),
-      }),
-      orderBy: (field, direction) => ({
-        get: async () => ({
-          docs: [],
-          empty: true,
-        }),
-      }),
-      doc: (id) => ({
-        update: async (data) => {
-          console.log(
-            `[Mock DB] Updating ${name}/${id}:`,
-            JSON.stringify(data, null, 2)
-          );
-          return { id: id };
-        },
-        get: async () => ({
-          exists: false,
-          data: () => null,
-        }),
+      orderBy: () => ({ get: async () => ({ docs: [], empty: true }) }),
+      doc: () => ({
+        update: async () => ({ id: "mock_" + Date.now() }),
+        get: async () => ({ exists: false, data: () => null }),
       }),
     }),
   };
