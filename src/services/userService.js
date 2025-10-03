@@ -146,7 +146,7 @@ class UserService {
   /**
    * Create new user (admin only)
    */
-  static async createUser(email, password, role, createdByUserId) {
+  static async createUser(email, password, role, createdBy) {
     try {
       // Check if user already exists
       const existingUserQuery = await db
@@ -171,7 +171,7 @@ class UserService {
         role: role || USER_ROLES.USER,
         isActive: true,
         createdAt: new Date().toISOString(),
-        createdBy: createdByUserId,
+        createdBy: createdBy,
         lastLogin: null,
       });
 

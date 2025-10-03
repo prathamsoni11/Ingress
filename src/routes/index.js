@@ -389,7 +389,7 @@ router.post("/users", authenticateJWT, requireAdmin, async (req, res) => {
       email,
       password,
       role,
-      req.user.userId
+      req.user.email
     );
 
     if (!result.success) {
