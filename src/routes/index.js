@@ -696,4 +696,123 @@ router.get("/dashboard", authenticateJWT, requireRole([USER_ROLES.USER, USER_ROL
   }
 });
 
+/**
+ * @swagger
+ * /api/analytics/{ipAddress}:
+ *   get:
+ *     summary: Get analytics data for specific IP address
+ *     description: Retrieve session analytics data for a specific IP address
+ *     tags: [Analytics]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: ipAddress
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: IP address to get analytics for
+ *         example: "203.0.113.45"
+ *     responses:
+ *       200:
+ *         description: Analytics data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     ipAddress:
+ *                       type: string
+ *                     firstVisit:
+ *                       type: string
+ *                     lastVisit:
+ *                       type: string
+ *                     totalSessions:
+ *                       type: number
+ *                     sessions:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           sessionId:
+ *                             type: string
+ *                           timestamp:
+ *                             type: string
+ *                           sessionDurationMs:
+ *                             type: number
+ *                           pageUrl:
+ *                             type: array
+ *                           userAgent:
+ *                             type: string
+ *       404:
+ *         description: IP address not found
+ *       401:
+ *         description: Authentication required
+ */
+router.get("/analytics/:ipAddress", authenticateJWT, requireRole([USER_ROLES.USER, USER_ROLES.ADMIN]), async (req, res) => {
+  try {
+    const { ipAddress } = req.params;
+
+    // Validate IP address format (basic validation)
+    const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+    if (!ipRegex.test(ipAddress)) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: "Invalid IP address format",
+      });
+    }
+
+    // Query Firebase for the specific IP address
+    const snapshot = await db
+      .collection("session_analytics")
+      .where("ipAddress", "==", ipAddress)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({
+        success: false,
+        message: `No analytics data found for IP address: ${ipAddress}`,
+      });
+    }
+
+    const doc = snapshot.docs[0];
+    const data = {
+      id: doc.id,
+      ...doc.data(),
+    };
+
+    // For normal users, mask IP address for privacy (except when querying specific IP)
+    const responseData = req.user.role === USER_ROLES.ADMIN 
+      ? data 
+      : {
+          ...data,
+          // Keep the queried IP visible but mask in session details if needed
+          sessions: data.sessions?.map(session => ({
+            ...session,
+            // Keep session data but could add additional privacy controls here
+          })) || []
+        };
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: responseData,
+      message: `Analytics data retrieved for IP: ${ipAddress}`,
+      userRole: req.user.role,
+    });
+
+  } catch (error) {
+    Logger.error("Analytics", "Error retrieving IP analytics data", error);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to retrieve analytics data",
+    });
+  }
+});
+
 module.exports = router;

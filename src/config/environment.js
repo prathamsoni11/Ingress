@@ -12,20 +12,12 @@ class EnvironmentConfig {
   }
 
   /**
-   * Load environment-specific configuration
+   * Load environment configuration
    */
   loadEnvironmentConfig() {
-    const envFile = `.env.${this.environment}`;
-    const envPath = path.resolve(process.cwd(), envFile);
-
-    // Check if environment-specific file exists
-    if (fs.existsSync(envPath)) {
-      console.log(`Loading environment config: ${envFile}`);
-      require("dotenv").config({ path: envPath });
-    } else {
-      console.log(`Environment file ${envFile} not found, using default .env`);
-      require("dotenv").config();
-    }
+    // Always load .env file only
+    console.log(`Loading environment config: .env`);
+    require("dotenv").config();
 
     // Validate required environment variables
     this.validateEnvironment();
