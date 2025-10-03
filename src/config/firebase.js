@@ -1,30 +1,45 @@
 const admin = require("firebase-admin");
 const path = require("path");
 
+// Suppress Firebase SDK verbose error logging
+const originalConsoleError = console.error;
+console.error = (...args) => {
+  const message = args.join(" ");
+  // Suppress Firebase API errors but keep other errors
+  if (
+    message.includes("googleapis.com") ||
+    message.includes("CONSUMER_INVALID") ||
+    message.includes("Permission denied on resource project") ||
+    message.includes("x-debug-tracking-id") ||
+    message.includes("statusDetails") ||
+    message.includes("errorInfoMetadata")
+  ) {
+    return;
+  }
+  originalConsoleError.apply(console, args);
+};
+
 let db;
 
 try {
-  if (!admin.apps.length) {
-    const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-    const projectId = process.env.FIREBASE_PROJECT_ID;
+  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  const projectId = process.env.FIREBASE_PROJECT_ID;
 
-    if (serviceAccountPath && projectId) {
-      // Initialize with service account key
-      const serviceAccount = require(path.resolve(serviceAccountPath));
-
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: projectId,
-      });
-
-      db = admin.firestore();
-      console.log("[Firebase] Successfully initialized with service account");
-    } else {
-      throw new Error("Firebase credentials not found");
-    }
-  } else {
-    db = admin.firestore();
+  if (!serviceAccountPath || !projectId) {
+    throw new Error("Firebase credentials not configured");
   }
+
+  if (!admin.apps.length) {
+    const serviceAccount = require(path.resolve(serviceAccountPath));
+
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      projectId: projectId,
+    });
+  }
+
+  db = admin.firestore();
+  console.log("[Firebase] Initialized");
 } catch (error) {
   console.log("[Firebase] Using mock database");
 
