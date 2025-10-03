@@ -83,10 +83,7 @@ router.post("/track-session", async (req, res) => {
       ipAddress: ipAddress || "unknown"
     });
 
-    // Test Firebase connection first
-    console.log("[SessionTracker] Testing Firebase connection...");
-    const testCollection = db.collection("session_analytics");
-    console.log("[SessionTracker] Collection reference created:", !!testCollection);
+
 
     // Simple validation - just check if we have the basic data
     if (!sessionId) {
@@ -206,20 +203,9 @@ router.post("/track-session", async (req, res) => {
     });
 
   } catch (error) {
-    // Log detailed error information
-    console.error("[SessionTracker] Detailed Error:", {
-      message: error.message,
-      code: error.code,
-      name: error.name,
-      stack: error.stack,
-      fullError: JSON.stringify(error, null, 2)
-    });
-    
     Logger.error("SessionTracker", "Error storing data", {
       message: error.message,
       code: error.code,
-      stack: error.stack,
-      details: error.details || error
     });
     
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
