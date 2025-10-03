@@ -10,43 +10,69 @@ const { ERROR_MESSAGES, USER_ROLES } = require("../utils/constants");
  */
 class UserService {
   /**
-   * Initialize admin user if not exists
+   * Initialize admin users if not exist
    */
   static async initializeAdmin() {
     try {
-      const adminEmail = process.env.ADMIN_EMAIL;
-      const adminPassword = process.env.ADMIN_PASSWORD;
+      // Support multiple admin users
+      const adminEmails = process.env.ADMIN_EMAIL
+        ? process.env.ADMIN_EMAIL.split(",")
+        : [];
+      const adminPasswords = process.env.ADMIN_PASSWORD
+        ? process.env.ADMIN_PASSWORD.split(",")
+        : [];
 
-      if (!adminEmail || !adminPassword) {
+      if (adminEmails.length === 0 || adminPasswords.length === 0) {
         Logger.warn("UserService", "Admin credentials not configured");
         return;
       }
 
-      // Check if admin already exists
-      const adminQuery = await db
-        .collection("users")
-        .where("email", "==", adminEmail)
-        .get();
+      // If only one password provided, use it for all admins
+      const passwords =
+        adminPasswords.length === 1
+          ? new Array(adminEmails.length).fill(adminPasswords[0])
+          : adminPasswords;
 
-      if (adminQuery.empty) {
-        // Create admin user
-        const hashedPassword = await bcrypt.hash(adminPassword, 12);
+      if (adminEmails.length !== passwords.length) {
+        Logger.warn(
+          "UserService",
+          "Mismatch between admin emails and passwords count"
+        );
+        return;
+      }
 
-        await db.collection("users").add({
-          email: adminEmail,
-          password: hashedPassword,
-          role: USER_ROLES.ADMIN,
-          isActive: true,
-          createdAt: new Date().toISOString(),
-          createdBy: "system",
-          lastLogin: null,
-        });
+      for (let i = 0; i < adminEmails.length; i++) {
+        const email = adminEmails[i].trim();
+        const password = passwords[i].trim();
 
-        Logger.info("UserService", "Admin user created successfully", {
-          email: adminEmail,
-        });
-      } else {
-        Logger.info("UserService", "Admin user already exists");
+        if (!email || !password) continue;
+
+        // Check if admin already exists
+        const adminQuery = await db
+          .collection("users")
+          .where("email", "==", email)
+          .get();
+
+        if (adminQuery.empty) {
+          // Create admin user
+          const hashedPassword = await bcrypt.hash(password, 12);
+
+          await db.collection("users").add({
+            email: email,
+            password: hashedPassword,
+            role: USER_ROLES.ADMIN,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            createdBy: "system",
+            lastLogin: null,
+          });
+
+          Logger.info("UserService", "Admin user created successfully", {
+            email: email,
+          });
+        } else {
+          Logger.info("UserService", "Admin user already exists", { email });
+        }
       }
     } catch (error) {
       Logger.error("UserService", "Error initializing admin user", error);
